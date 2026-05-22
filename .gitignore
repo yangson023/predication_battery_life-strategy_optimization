@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Data and model artifacts
+data/raw/*
+data/processed/*
+data/features/*
+models/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/features/.gitkeep
+!models/.gitkeep
+
+# Local outputs
+outputs/
+logs/
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
