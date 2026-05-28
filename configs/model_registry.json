@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "default_model_key": "shared_capacity_ridge",
+  "feature_contract": "common_cycle_v1",
+  "models": {
+    "shared_capacity_ridge": {
+      "battery_types": ["*"],
+      "kind": "shared_baseline",
+      "target": "rul_cycles",
+      "feature_contract": "common_cycle_v1",
+      "artifact_path": "models/shared_capacity_ridge.json",
+      "status": "prototype"
+    },
+    "li_ion_capacity_ridge": {
+      "battery_types": ["li_ion"],
+      "kind": "chemistry_specific",
+      "target": "rul_cycles",
+      "feature_contract": "common_cycle_v1",
+      "base_model_key": "shared_capacity_ridge",
+      "artifact_path": "models/li_ion_capacity_ridge.json",
+      "status": "prototype"
+    },
+    "lfp_capacity_head": {
+      "battery_types": ["lfp"],
+      "kind": "chemistry_specific",
+      "target": "rul_cycles",
+      "feature_contract": "common_cycle_v1",
+      "base_model_key": "shared_capacity_ridge",
+      "artifact_path": "models/lfp_capacity_head.json",
+      "status": "planned"
+    },
+    "nmc_capacity_head": {
+      "battery_types": ["nmc"],
+      "kind": "chemistry_specific",
+      "target": "rul_cycles",
+      "feature_contract": "common_cycle_v1",
+      "base_model_key": "shared_capacity_ridge",
+      "artifact_path": "models/nmc_capacity_head.json",
+      "status": "planned"
+    },
+    "nca_capacity_head": {
+      "battery_types": ["nca"],
+      "kind": "chemistry_specific",
+      "target": "rul_cycles",
+      "feature_contract": "common_cycle_v1",
+      "base_model_key": "shared_capacity_ridge",
+      "artifact_path": "models/nca_capacity_head.json",
+      "status": "planned"
+    }
+  }
+}
