@@ -5,8 +5,9 @@ This module contains a static MVP for tracking battery research development advi
 ## Files
 
 - `index.html`: page structure
-- `styles.css`: visual design, responsive layout, and original energy-lab mascot
+- `styles.css`: visual design, responsive layout, current-flow effects, and electron sparkle effects
 - `app.js`: seeded advice data, filters, status toggles, and local persistence
+- `assets/battery-lab-character.png`: local character image used in the hero panel
 
 ## Usage
 
