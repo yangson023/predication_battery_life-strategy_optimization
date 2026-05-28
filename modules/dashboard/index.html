@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Battery Research Dev Log</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">新能源电池科研 MVP</p>
+          <h1 id="page-title">开发日志与建议追踪</h1>
+          <p class="lead">
+            按日期整理研发建议，依据重要性设定优先级，并记录每条建议的执行状态。
+          </p>
+        </div>
+
+        <div class="mascot-panel" aria-label="黄色电能实验室吉祥物">
+          <div class="mascot">
+            <div class="ear ear-left"></div>
+            <div class="ear ear-right"></div>
+            <div class="head">
+              <div class="goggles">
+                <span></span>
+                <span></span>
+              </div>
+              <div class="eye eye-left"></div>
+              <div class="eye eye-right"></div>
+              <div class="cheek cheek-left"></div>
+              <div class="cheek cheek-right"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="body">
+              <div class="battery">
+                <span class="battery-cap"></span>
+                <span class="battery-bolt">⚡</span>
+              </div>
+            </div>
+            <div class="tail"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="control-band" aria-label="日志控制区">
+        <div class="stat-grid">
+          <article class="stat">
+            <span class="stat-label">总建议</span>
+            <strong id="total-count">0</strong>
+          </article>
+          <article class="stat">
+            <span class="stat-label">已执行</span>
+            <strong id="done-count">0</strong>
+          </article>
+          <article class="stat">
+            <span class="stat-label">未执行</span>
+            <strong id="todo-count">0</strong>
+          </article>
+          <article class="stat">
+            <span class="stat-label">高优先级</span>
+            <strong id="high-count">0</strong>
+          </article>
+        </div>
+
+        <div class="toolbar">
+          <label class="field">
+            <span>状态</span>
+            <select id="status-filter">
+              <option value="all">全部</option>
+              <option value="todo">未执行</option>
+              <option value="done">已执行</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>优先级</span>
+            <select id="priority-filter">
+              <option value="all">全部</option>
+              <option value="P0">P0</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+            </select>
+          </label>
+          <label class="field search-field">
+            <span>检索</span>
+            <input id="search-input" type="search" placeholder="输入模块、关键词、日期" />
+          </label>
+        </div>
+      </section>
+
+      <section class="auto-log" aria-labelledby="auto-title">
+        <div>
+          <h2 id="auto-title">操作记录</h2>
+          <p>
+            写下你刚完成的操作，系统会按关键词自动匹配相关建议并切换为已执行。
+          </p>
+        </div>
+        <form id="operation-form">
+          <input
+            id="operation-input"
+            type="text"
+            placeholder="例如：已生成 SOH/RUL 标签并切换到 feature-engineering"
+          />
+          <button type="submit">记录</button>
+        </form>
+        <p id="match-feedback" class="match-feedback" aria-live="polite"></p>
+      </section>
+
+      <section class="timeline" id="timeline" aria-label="开发日志列表"></section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
