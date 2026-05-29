@@ -44,6 +44,54 @@ BASELINE_FEATURES = [
     "cycles_since_latest_impedance",
 ]
 
+FEATURE_GROUPS = {
+    "history": [
+        "discharge_cycle",
+        "available_discharge_history_cycles",
+        "cycles_since_latest_charge",
+        "cycles_since_latest_impedance",
+    ],
+    "capacity": [
+        "capacity_ah",
+        "soh_capacity_ratio",
+        "capacity_loss_ratio",
+        "capacity_change_previous_ah",
+        "soh_change_previous",
+    ],
+    "trend": [
+        "capacity_rolling_mean_5_ah",
+        "capacity_rolling_std_5_ah",
+        "capacity_slope_5_ah_per_cycle",
+        "soh_slope_5_per_cycle",
+        "capacity_rolling_mean_10_ah",
+        "capacity_rolling_std_10_ah",
+        "capacity_slope_10_ah_per_cycle",
+        "soh_slope_10_per_cycle",
+    ],
+    "voltage": [
+        "discharge_voltage_measured_v_min",
+        "discharge_voltage_measured_v_max",
+        "discharge_voltage_measured_v_mean",
+        "latest_charge_voltage_measured_v_mean",
+    ],
+    "current": [
+        "discharge_current_measured_a_mean",
+        "latest_charge_current_measured_a_mean",
+    ],
+    "temperature": [
+        "discharge_temperature_measured_c_max",
+        "discharge_temperature_measured_c_mean",
+        "latest_charge_temperature_measured_c_mean",
+    ],
+    "charge": [
+        "latest_charge_duration_s",
+    ],
+    "impedance": [
+        "latest_impedance_re_ohm",
+        "latest_impedance_rct_ohm",
+    ],
+}
+
 
 @dataclass
 class FoldResult:
@@ -56,6 +104,8 @@ class FoldResult:
     rmse: float | None
     mean_error: float | None
     max_abs_error: float | None
+    interval_coverage_80: float | None
+    interval_width_mean: float | None
     notes: str
 
 
@@ -100,6 +150,40 @@ def evaluate_predictions(actual: pd.Series, predicted: np.ndarray) -> dict[str, 
     }
 
 
+def residual_quantiles(actual: pd.Series, predicted: np.ndarray) -> dict[str, float]:
+    residuals = actual.to_numpy(dtype=float) - predicted
+    return {
+        "q10": float(np.quantile(residuals, 0.10)),
+        "q50": float(np.quantile(residuals, 0.50)),
+        "q90": float(np.quantile(residuals, 0.90)),
+    }
+
+
+def interval_columns(predicted: np.ndarray, quantiles: dict[str, float]) -> pd.DataFrame:
+    lower = np.clip(predicted + quantiles["q10"], a_min=0.0, a_max=None)
+    median = np.clip(predicted + quantiles["q50"], a_min=0.0, a_max=None)
+    upper = np.clip(predicted + quantiles["q90"], a_min=0.0, a_max=None)
+    return pd.DataFrame(
+        {
+            "predicted_rul_p10": lower,
+            "predicted_rul_p50": median,
+            "predicted_rul_p90": upper,
+            "prediction_interval_width": upper - lower,
+        }
+    )
+
+
+def interval_metrics(
+    actual: pd.Series, lower: np.ndarray, upper: np.ndarray
+) -> dict[str, float]:
+    actual_values = actual.to_numpy(dtype=float)
+    covered = (actual_values >= lower) & (actual_values <= upper)
+    return {
+        "interval_coverage_80": float(np.mean(covered)),
+        "interval_width_mean": float(np.mean(upper - lower)),
+    }
+
+
 def evaluate_leave_one_battery_out(
     frame: pd.DataFrame,
     feature_columns: list[str] = BASELINE_FEATURES,
@@ -132,6 +216,8 @@ def evaluate_leave_one_battery_out(
                     rmse=None,
                     mean_error=None,
                     max_abs_error=None,
+                    interval_coverage_80=None,
+                    interval_width_mean=None,
                     notes="no_training_rows",
                 )
             )
@@ -142,10 +228,13 @@ def evaluate_leave_one_battery_out(
         stds = x_train_raw.std(ddof=0).replace(0, 1.0).fillna(1.0)
         x_train = (x_train_raw - means) / stds
         weights = fit_ridge(x_train, train[target].astype(float), alpha)
+        train_predicted = np.clip(predict_ridge(x_train, weights), a_min=0.0, a_max=None)
+        quantiles = residual_quantiles(train[target].astype(float), train_predicted)
 
         x_test_raw, _ = prepare_features(test, feature_columns, fill_values)
         x_test = (x_test_raw - means) / stds
         predicted = np.clip(predict_ridge(x_test, weights), a_min=0.0, a_max=None)
+        intervals = interval_columns(predicted, quantiles)
         fold_predictions = test.loc[
             :,
             [
@@ -160,6 +249,8 @@ def evaluate_leave_one_battery_out(
             ],
         ].copy()
         fold_predictions["predicted_rul_cycles"] = predicted
+        for column in intervals.columns:
+            fold_predictions[column] = intervals[column].to_numpy()
         predictions.append(fold_predictions)
 
         if labeled_test.empty:
@@ -174,6 +265,8 @@ def evaluate_leave_one_battery_out(
                     rmse=None,
                     mean_error=None,
                     max_abs_error=None,
+                    interval_coverage_80=None,
+                    interval_width_mean=None,
                     notes="test_cell_has_no_observed_eol",
                 )
             )
@@ -181,6 +274,11 @@ def evaluate_leave_one_battery_out(
 
         labeled_positions = test.index.isin(labeled_test.index)
         metrics = evaluate_predictions(labeled_test[target], predicted[labeled_positions])
+        uncertainty = interval_metrics(
+            labeled_test[target],
+            fold_predictions.loc[labeled_positions, "predicted_rul_p10"].to_numpy(),
+            fold_predictions.loc[labeled_positions, "predicted_rul_p90"].to_numpy(),
+        )
         results.append(
             FoldResult(
                 test_cell_id=str(test_cell_id),
@@ -192,6 +290,8 @@ def evaluate_leave_one_battery_out(
                 rmse=metrics["rmse"],
                 mean_error=metrics["mean_error"],
                 max_abs_error=metrics["max_abs_error"],
+                interval_coverage_80=uncertainty["interval_coverage_80"],
+                interval_width_mean=uncertainty["interval_width_mean"],
                 notes="ok",
             )
         )
