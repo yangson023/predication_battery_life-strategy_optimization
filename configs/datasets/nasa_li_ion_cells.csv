@@ -1,0 +1,5 @@
+dataset,battery_type,cell_id,chemistry,form_factor,nominal_capacity_ah,initial_capacity_source,charge_protocol,charge_current_a,charge_voltage_limit_v,discharge_current_a,discharge_cutoff_voltage_v,ambient_temperature_set_c,eol_capacity_ratio,notes
+nasa,li_ion,B0005,unknown_li_ion,18650,2.0,first_discharge_cycle,cc_cv,1.5,4.2,2.0,2.7,24,0.7,NASA aging dataset cell B0005
+nasa,li_ion,B0006,unknown_li_ion,18650,2.0,first_discharge_cycle,cc_cv,1.5,4.2,2.0,2.5,24,0.7,NASA aging dataset cell B0006
+nasa,li_ion,B0007,unknown_li_ion,18650,2.0,first_discharge_cycle,cc_cv,1.5,4.2,2.0,2.2,24,0.7,NASA aging dataset cell B0007
+nasa,li_ion,B0018,unknown_li_ion,18650,2.0,first_discharge_cycle,cc_cv,1.5,4.2,2.0,2.5,24,0.7,NASA aging dataset cell B0018
