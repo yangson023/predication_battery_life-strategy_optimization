@@ -32,7 +32,7 @@ const entries = [
     detail:
       "数据格式和特征体系保持统一，模型按电池体系或数据来源分科训练，并保留迁移学习路径。",
     keywords: ["电池类型", "分类型", "lfp", "nmc", "nca", "迁移学习"],
-    defaultStatus: "todo",
+    defaultStatus: "done",
   },
   {
     id: "2026-05-24-nasa-preprocess",
@@ -54,7 +54,7 @@ const entries = [
     detail:
       "检查缺失值、时间递增、物理范围、容量跳变、阻抗异常，并将大时序 CSV 同步转换为 Parquet。",
     keywords: ["数据质量", "quality", "parquet", "缺失值", "异常"],
-    defaultStatus: "todo",
+    defaultStatus: "done",
   },
   {
     id: "2026-05-27-soh-rul-features",
@@ -76,7 +76,7 @@ const entries = [
     detail:
       "避免随机打乱导致数据泄漏，按 B0005/B0006/B0007/B0018 做跨电池泛化验证。",
     keywords: ["验证", "leave-one", "cross", "泛化", "数据泄漏"],
-    defaultStatus: "todo",
+    defaultStatus: "done",
   },
   {
     id: "2026-05-27-baseline-models",
@@ -87,7 +87,18 @@ const entries = [
     detail:
       "先用结构化循环特征训练可解释基线，再考虑 LSTM、GRU 或更复杂的序列模型。",
     keywords: ["baseline", "ridge", "random forest", "xgboost", "模型"],
-    defaultStatus: "todo",
+    defaultStatus: "done",
+  },
+  {
+    id: "2026-05-29-rul-ablation-uncertainty",
+    date: "2026-05-29",
+    priority: "P0",
+    module: "RUL Prediction",
+    title: "完成 RUL 特征消融与不确定性估计",
+    detail:
+      "在 Leave-One-Battery-Out 基线中加入残差分位数预测区间，并输出特征组消融结果，用于判断容量、电压、温度、阻抗等特征对 RUL 预测的影响。",
+    keywords: ["rul", "不确定性", "预测区间", "特征消融", "ablation", "uncertainty"],
+    defaultStatus: "done",
   },
   {
     id: "2026-05-27-strategy-data",
