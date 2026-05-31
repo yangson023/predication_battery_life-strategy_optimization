@@ -28,6 +28,8 @@ class CellLabelSummary:
     eol_observed: bool
     eol_discharge_cycle: int | None
     censored_at_discharge_cycle: int | None
+    event_observed: bool
+    duration_cycles: int
 
 
 def find_first_sustained_crossing(
@@ -120,6 +122,12 @@ def build_labels_for_cell(
             ),
             "rul_is_censored": not eol_observed,
             "rul_lower_bound_cycles": (last_cycle - discharge_cycle).clip(lower=0),
+            "event_observed": eol_observed,
+            "duration_cycles": (
+                eol_cycle - discharge_cycle
+                if eol_cycle is not None
+                else last_cycle - discharge_cycle
+            ).clip(lower=0),
         }
     )
     summary = CellLabelSummary(
@@ -133,8 +141,34 @@ def build_labels_for_cell(
         eol_observed=eol_observed,
         eol_discharge_cycle=eol_cycle,
         censored_at_discharge_cycle=None if eol_observed else last_cycle,
+        event_observed=eol_observed,
+        duration_cycles=eol_cycle if eol_cycle is not None else last_cycle,
     )
     return labels, summary
+
+
+def build_multi_threshold_labels_for_cell(
+    cycle_summary: pd.DataFrame,
+    thresholds: list[float],
+    initial_capacity_window: int,
+    consecutive_cycles: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    labels_by_threshold: list[pd.DataFrame] = []
+    summaries: list[CellLabelSummary] = []
+    for threshold in thresholds:
+        labels, summary = build_labels_for_cell(
+            cycle_summary=cycle_summary,
+            threshold=threshold,
+            initial_capacity_window=initial_capacity_window,
+            consecutive_cycles=consecutive_cycles,
+        )
+        labels["label_key"] = f"capacity_eol_{int(round(threshold * 100))}"
+        labels_by_threshold.append(labels)
+        summaries.append(summary)
+    return (
+        pd.concat(labels_by_threshold, ignore_index=True),
+        pd.DataFrame([asdict(summary) for summary in summaries]),
+    )
 
 
 def prefixed_measurement_features(cycle_summary: pd.DataFrame, cycle_type: str) -> pd.DataFrame:
@@ -211,6 +245,8 @@ def build_features_for_cell(
         "rul_cycles",
         "rul_is_censored",
         "rul_lower_bound_cycles",
+        "event_observed",
+        "duration_cycles",
     ]
     features = discharge.merge(labels[label_columns], on="cycle_index", how="left")
     features = features.drop(columns=["cycle_type", "cycle_number_within_type"])
@@ -238,6 +274,8 @@ def build_features_for_cell(
                 "rul_cycles",
                 "rul_is_censored",
                 "rul_lower_bound_cycles",
+                "event_observed",
+                "duration_cycles",
             }
         }
     )
@@ -296,21 +334,42 @@ def main() -> None:
         default=Path("data/features/nasa/li_ion"),
     )
     parser.add_argument("--eol-threshold", type=float, default=0.70)
+    parser.add_argument(
+        "--eol-thresholds",
+        type=float,
+        nargs="+",
+        default=[0.70, 0.75, 0.80],
+        help="Thresholds used for multi-threshold label tables.",
+    )
     parser.add_argument("--initial-capacity-window", type=int, default=1)
     parser.add_argument("--consecutive-eol-cycles", type=int, default=1)
     args = parser.parse_args()
 
-    if not 0.0 < args.eol_threshold < 1.0:
-        raise ValueError("--eol-threshold must be between 0 and 1.")
+    thresholds = sorted(set(args.eol_thresholds))
+    if args.eol_threshold not in thresholds:
+        thresholds.append(args.eol_threshold)
+        thresholds = sorted(thresholds)
+    if not 0.0 < args.eol_threshold < 1.0 or any(
+        not 0.0 < threshold < 1.0 for threshold in thresholds
+    ):
+        raise ValueError("EOL thresholds must be between 0 and 1.")
     if args.initial_capacity_window < 1 or args.consecutive_eol_cycles < 1:
         raise ValueError("Window and consecutive cycle arguments must be positive.")
 
     args.output_root.mkdir(parents=True, exist_ok=True)
     all_labels: list[pd.DataFrame] = []
+    all_multi_threshold_labels: list[pd.DataFrame] = []
     all_features: list[pd.DataFrame] = []
     summaries: list[CellLabelSummary] = []
+    multi_threshold_summaries: list[pd.DataFrame] = []
 
     for cell_id, cycle_summary in load_cell_summaries(args.input_root):
+        multi_labels, multi_summary = build_multi_threshold_labels_for_cell(
+            cycle_summary,
+            thresholds=thresholds,
+            initial_capacity_window=args.initial_capacity_window,
+            consecutive_cycles=args.consecutive_eol_cycles,
+        )
         labels, summary = build_labels_for_cell(
             cycle_summary,
             threshold=args.eol_threshold,
@@ -321,17 +380,28 @@ def main() -> None:
         cell_dir = args.output_root / cell_id
         cell_dir.mkdir(parents=True, exist_ok=True)
         labels.to_csv(cell_dir / "soh_rul_labels.csv", index=False)
+        multi_labels.to_csv(cell_dir / "soh_rul_labels_multi_threshold.csv", index=False)
         features.to_csv(cell_dir / "cycle_features.csv", index=False)
         all_labels.append(labels)
+        all_multi_threshold_labels.append(multi_labels)
         all_features.append(features)
         summaries.append(summary)
+        multi_threshold_summaries.append(multi_summary.assign(cell_id=cell_id))
 
     labels_table = pd.concat(all_labels, ignore_index=True)
+    multi_labels_table = pd.concat(all_multi_threshold_labels, ignore_index=True)
     features_table = pd.concat(all_features, ignore_index=True)
+    multi_summary_table = pd.concat(multi_threshold_summaries, ignore_index=True)
     labels_table.to_csv(args.output_root / "soh_rul_labels.csv", index=False)
+    multi_labels_table.to_csv(
+        args.output_root / "soh_rul_labels_multi_threshold.csv", index=False
+    )
     features_table.to_csv(args.output_root / "cycle_features.csv", index=False)
     pd.DataFrame([asdict(item) for item in summaries]).to_csv(
         args.output_root / "label_summary.csv", index=False
+    )
+    multi_summary_table.to_csv(
+        args.output_root / "label_summary_multi_threshold.csv", index=False
     )
     with (args.output_root / "label_manifest.json").open("w", encoding="utf-8") as fh:
         json.dump([asdict(item) for item in summaries], fh, indent=2)

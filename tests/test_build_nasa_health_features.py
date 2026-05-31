@@ -5,6 +5,7 @@ import pandas as pd
 from modules.feature_engineering.build_nasa_health_features import (
     build_features_for_cell,
     build_labels_for_cell,
+    build_multi_threshold_labels_for_cell,
 )
 
 
@@ -37,6 +38,8 @@ class HealthFeatureTests(unittest.TestCase):
         self.assertEqual(summary.eol_discharge_cycle, 3)
         self.assertEqual(labels["rul_cycles"].tolist(), [2, 1, 0, 0])
         self.assertTrue(labels["is_eol_or_after"].iloc[2])
+        self.assertTrue(labels["event_observed"].all())
+        self.assertEqual(labels["duration_cycles"].tolist(), [2, 1, 0, 0])
 
     def test_unobserved_eol_is_censored(self) -> None:
         labels, summary = build_labels_for_cell(
@@ -50,6 +53,26 @@ class HealthFeatureTests(unittest.TestCase):
         self.assertTrue(labels["rul_cycles"].isna().all())
         self.assertTrue(labels["rul_is_censored"].all())
         self.assertEqual(labels["rul_lower_bound_cycles"].tolist(), [2, 1, 0])
+        self.assertFalse(labels["event_observed"].any())
+        self.assertEqual(labels["duration_cycles"].tolist(), [2, 1, 0])
+
+    def test_multi_threshold_labels_keep_endpoint_versions(self) -> None:
+        labels, summary = build_multi_threshold_labels_for_cell(
+            self.discharge_summary([2.0, 1.7, 1.48, 1.35]),
+            thresholds=[0.70, 0.75, 0.80],
+            initial_capacity_window=1,
+            consecutive_cycles=1,
+        )
+
+        self.assertEqual(
+            sorted(labels["label_key"].unique().tolist()),
+            ["capacity_eol_70", "capacity_eol_75", "capacity_eol_80"],
+        )
+        eol_by_threshold = dict(
+            zip(summary["eol_threshold"], summary["eol_discharge_cycle"])
+        )
+        self.assertEqual(eol_by_threshold[0.8], 3)
+        self.assertEqual(eol_by_threshold[0.7], 4)
 
     def test_feature_table_adds_trailing_capacity_features(self) -> None:
         cycle_summary = self.discharge_summary([2.0, 1.9, 1.8])
@@ -58,6 +81,8 @@ class HealthFeatureTests(unittest.TestCase):
 
         self.assertIn("capacity_rolling_mean_5_ah", features.columns)
         self.assertIn("capacity_slope_5_ah_per_cycle", features.columns)
+        self.assertIn("event_observed", features.columns)
+        self.assertIn("duration_cycles", features.columns)
         self.assertAlmostEqual(features["capacity_rolling_mean_5_ah"].iloc[2], 1.9)
 
 
