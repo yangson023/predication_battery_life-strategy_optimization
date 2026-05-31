@@ -44,6 +44,18 @@ BASELINE_FEATURES = [
     "cycles_since_latest_impedance",
 ]
 
+LABEL_COLUMNS = [
+    "rul_cycles",
+    "rul_is_censored",
+    "rul_lower_bound_cycles",
+    "eol_threshold",
+    "eol_observed",
+    "eol_discharge_cycle",
+    "is_eol_or_after",
+    "event_observed",
+    "duration_cycles",
+]
+
 FEATURE_GROUPS = {
     "history": [
         "discharge_cycle",
@@ -114,6 +126,56 @@ def validate_columns(frame: pd.DataFrame, feature_columns: list[str], target: st
     missing = sorted(required - set(frame.columns))
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
+
+
+def apply_label_key(
+    features: pd.DataFrame,
+    labels: pd.DataFrame,
+    label_key: str,
+    target: str = "rul_cycles",
+) -> pd.DataFrame:
+    if "label_key" not in labels.columns:
+        raise ValueError("Label table must contain a label_key column.")
+    selected = labels.loc[labels["label_key"].eq(label_key)].copy()
+    if selected.empty:
+        available = sorted(labels["label_key"].dropna().unique().tolist())
+        raise ValueError(f"label_key {label_key!r} not found. Available: {available}")
+
+    join_keys = ["dataset", "battery_type", "cell_id", "cycle_index"]
+    missing_keys = sorted(set(join_keys) - set(features.columns) - set(selected.columns))
+    if missing_keys:
+        raise ValueError(f"Missing join keys for label merge: {missing_keys}")
+
+    label_columns = join_keys + ["label_key"] + [
+        column for column in LABEL_COLUMNS if column in selected.columns
+    ]
+    feature_without_old_labels = features.drop(
+        columns=[column for column in LABEL_COLUMNS + ["label_key"] if column in features.columns]
+    )
+    merged = feature_without_old_labels.merge(
+        selected.loc[:, label_columns],
+        on=join_keys,
+        how="left",
+        validate="one_to_one",
+    )
+    if merged[target].isna().all():
+        raise ValueError(f"All target values are missing after applying {label_key!r}.")
+    return merged
+
+
+def load_feature_table(
+    features_path: Path,
+    labels_path: Path | None = None,
+    label_key: str | None = None,
+    target: str = "rul_cycles",
+) -> pd.DataFrame:
+    features = pd.read_csv(features_path)
+    if label_key:
+        if labels_path is None:
+            raise ValueError("--labels is required when --label-key is provided.")
+        labels = pd.read_csv(labels_path)
+        features = apply_label_key(features, labels, label_key, target=target)
+    return features
 
 
 def prepare_features(
@@ -323,12 +385,28 @@ def main() -> None:
         type=Path,
         default=Path("models/rul_prediction/nasa_li_ion_baseline"),
     )
+    parser.add_argument(
+        "--labels",
+        type=Path,
+        default=None,
+        help="Optional multi-threshold label table.",
+    )
+    parser.add_argument(
+        "--label-key",
+        default=None,
+        help="Optional label key, such as capacity_eol_80.",
+    )
     parser.add_argument("--alpha", type=float, default=1.0)
     args = parser.parse_args()
 
-    frame = pd.read_csv(args.features)
+    frame = load_feature_table(args.features, args.labels, args.label_key)
+    output_dir = (
+        args.output_dir / args.label_key
+        if args.label_key and args.output_dir.name != args.label_key
+        else args.output_dir
+    )
     results, predictions = evaluate_leave_one_battery_out(frame, alpha=args.alpha)
-    write_results(results, predictions, args.output_dir)
+    write_results(results, predictions, output_dir)
     for result in results:
         if result.mae is None:
             print(

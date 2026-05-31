@@ -52,6 +52,18 @@ python modules\rul_prediction\leave_one_battery_out.py
 python modules\rul_prediction\feature_ablation.py
 ```
 
+To run the same workflow for a different EOL endpoint:
+
+```powershell
+python modules\rul_prediction\leave_one_battery_out.py `
+  --labels data\features\nasa\li_ion\soh_rul_labels_multi_threshold.csv `
+  --label-key capacity_eol_80
+
+python modules\rul_prediction\feature_ablation.py `
+  --labels data\features\nasa\li_ion\soh_rul_labels_multi_threshold.csv `
+  --label-key capacity_eol_80
+```
+
 Outputs are written under:
 
 ```text

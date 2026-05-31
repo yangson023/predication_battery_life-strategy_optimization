@@ -5,6 +5,7 @@ import pandas as pd
 from modules.rul_prediction.leave_one_battery_out import (
     BASELINE_FEATURES,
     FEATURE_GROUPS,
+    apply_label_key,
     evaluate_leave_one_battery_out,
 )
 from modules.rul_prediction.feature_ablation import run_feature_ablation
@@ -53,6 +54,22 @@ class RulPredictionBaselineTests(unittest.TestCase):
 
         self.assertIsNone(censored.mae)
         self.assertEqual(censored.notes, "test_cell_has_no_observed_eol")
+
+    def test_apply_label_key_replaces_default_rul_targets(self) -> None:
+        frame = self.sample_frame()
+        labels = frame[
+            ["dataset", "battery_type", "cell_id", "cycle_index", "rul_lower_bound_cycles"]
+        ].copy()
+        labels["label_key"] = "capacity_eol_80"
+        labels["rul_cycles"] = 10
+        labels["rul_is_censored"] = False
+        labels["event_observed"] = True
+        labels["duration_cycles"] = 10
+
+        merged = apply_label_key(frame, labels, "capacity_eol_80")
+
+        self.assertTrue((merged["rul_cycles"] == 10).all())
+        self.assertTrue((merged["label_key"] == "capacity_eol_80").all())
 
     def test_feature_ablation_runs_all_groups(self) -> None:
         ablation = run_feature_ablation(self.sample_frame())

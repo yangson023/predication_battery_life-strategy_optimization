@@ -15,6 +15,7 @@ from modules.rul_prediction.leave_one_battery_out import (
     BASELINE_FEATURES,
     FEATURE_GROUPS,
     evaluate_leave_one_battery_out,
+    load_feature_table,
 )
 
 
@@ -60,13 +61,20 @@ def main() -> None:
         type=Path,
         default=Path("models/rul_prediction/nasa_li_ion_baseline/feature_ablation.csv"),
     )
+    parser.add_argument("--labels", type=Path, default=None)
+    parser.add_argument("--label-key", default=None)
     parser.add_argument("--alpha", type=float, default=1.0)
     args = parser.parse_args()
 
-    frame = pd.read_csv(args.features)
+    frame = load_feature_table(args.features, args.labels, args.label_key)
+    output_path = (
+        args.output.parent / args.label_key / args.output.name
+        if args.label_key and args.output.parent.name != args.label_key
+        else args.output
+    )
     ablation = run_feature_ablation(frame, alpha=args.alpha)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    ablation.to_csv(args.output, index=False)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ablation.to_csv(output_path, index=False)
 
     observed = ablation.loc[ablation["mae"].notna()].copy()
     summary = (
@@ -75,7 +83,7 @@ def main() -> None:
         .reset_index()
         .sort_values(["mean_mae", "ablation_name"])
     )
-    summary_path = args.output.with_name("feature_ablation_summary.csv")
+    summary_path = output_path.with_name("feature_ablation_summary.csv")
     summary.to_csv(summary_path, index=False)
     print(summary.to_string(index=False))
 
