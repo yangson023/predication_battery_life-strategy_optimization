@@ -1,0 +1,82 @@
+{
+  "schema_version": "external_battery_common_v1",
+  "common_identity_columns": [
+    "dataset_id",
+    "dataset_family",
+    "data_category",
+    "measurement_type",
+    "chemistry",
+    "cell_id",
+    "batch_id",
+    "part_id",
+    "source_archive_name",
+    "archive_member_path"
+  ],
+  "common_measurement_columns": [
+    "record_number",
+    "state",
+    "step_number",
+    "cycle_index",
+    "diagnostic_part",
+    "elapsed_time_s",
+    "relative_time_raw",
+    "timestamp_raw",
+    "current_a",
+    "voltage_v",
+    "capacity_ah",
+    "energy_wh",
+    "segment",
+    "pulse_type",
+    "pulse_index",
+    "pulse_soc",
+    "life",
+    "num_cycles",
+    "phase"
+  ],
+  "column_aliases": {
+    "Record number": "record_number",
+    "State": "state",
+    "Jump": "jump",
+    "Cycle": "cycle_index",
+    "Steps": "step_number",
+    "Step Number": "step_number",
+    "Current(A)": "current_a",
+    "Current (A)": "current_a",
+    "Voltage(V)": "voltage_v",
+    "Voltage (V)": "voltage_v",
+    "Capacity(Ah)": "capacity_ah",
+    "Capacity (Ah)": "capacity_ah",
+    "Energy(Wh)": "energy_wh",
+    "Relative Time(h:min:s.ms)": "relative_time_raw",
+    "Date(h:min:s.ms)": "timestamp_raw",
+    "Date (yyyy.mm.dd hh.mm.ss)": "timestamp_raw",
+    "Time (s)": "elapsed_time_s",
+    "Phase": "phase",
+    "Segment": "segment",
+    "Segment Key": "segment",
+    "Pulse Type": "pulse_type",
+    "Pulse Index": "pulse_index",
+    "Pulse SOC": "pulse_soc",
+    "Week Number": "week_number",
+    "RPT Number": "rpt_number",
+    "Life": "life",
+    "Num Cycles": "num_cycles"
+  },
+  "category_usage": {
+    "cycle_timeseries": {
+      "primary_model_use": "SOH/RUL feature extraction and temporal degradation modeling",
+      "recommended_grouping": ["cell_id", "cycle_index"],
+      "required_core_columns": ["current_a", "voltage_v", "capacity_ah"]
+    },
+    "rpt_diagnostic": {
+      "primary_model_use": "reference capacity, resistance, and calibration labels",
+      "recommended_grouping": ["cell_id", "diagnostic_part"],
+      "required_core_columns": ["current_a", "voltage_v", "capacity_ah"]
+    },
+    "abuse_test_timeseries": {
+      "primary_model_use": "thermal runaway and safety event modeling; do not mix directly with RUL labels",
+      "recommended_grouping": ["nominal_capacity_mah", "replicate_id", "soc_percent"],
+      "required_core_columns": []
+    }
+  }
+}
