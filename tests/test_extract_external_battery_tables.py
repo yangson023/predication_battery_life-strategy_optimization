@@ -9,6 +9,7 @@ import pandas as pd
 from modules.data_pipeline.extract_external_battery_tables import (
     extract_tables,
     normalize_column_name,
+    read_member_frame,
     select_inventory_rows,
 )
 
@@ -120,6 +121,17 @@ class ExtractExternalBatteryTablesTests(unittest.TestCase):
             self.assertIn("current_a", output.columns)
             self.assertIn("voltage_v", output.columns)
             self.assertEqual(output.loc[0, "cell_id"], "G3C1")
+
+    def test_zero_rows_per_member_reads_all_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "unit.zip"
+            member = "data.csv"
+            with ZipFile(archive, "w") as zf:
+                zf.writestr(member, "x\n1\n2\n")
+
+            frame = read_member_frame(archive, member, ".csv", rows_per_member=0)
+
+            self.assertEqual(len(frame), 2)
 
 
 if __name__ == "__main__":

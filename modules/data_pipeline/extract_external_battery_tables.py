@@ -158,13 +158,14 @@ def read_member_frame(
     file_extension: str,
     rows_per_member: int,
 ) -> pd.DataFrame:
+    nrows = None if rows_per_member == 0 else rows_per_member
     with ZipFile(archive_path) as zf:
         with zf.open(member_path) as handle:
             if file_extension.lower() == ".csv":
-                return pd.read_csv(handle, nrows=rows_per_member)
+                return pd.read_csv(handle, nrows=nrows)
             if file_extension.lower() in {".xlsx", ".xls"}:
                 data = handle.read()
-                return pd.read_excel(BytesIO(data), nrows=rows_per_member)
+                return pd.read_excel(BytesIO(data), nrows=nrows)
     raise ValueError(f"Unsupported file extension: {file_extension}")
 
 
@@ -349,7 +350,7 @@ def parse_args() -> argparse.Namespace:
         "--rows-per-member",
         type=int,
         default=500,
-        help="Rows to read from each archive member.",
+        help="Rows to read from each archive member. Use 0 for all rows.",
     )
     parser.add_argument(
         "--write-parquet",

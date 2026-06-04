@@ -40,6 +40,11 @@ data/processed/external_battery_datasets/
     abuse_test_timeseries_sample.csv
     extraction_summary.csv
     extraction_summary.json
+  by_cell/
+    <cell_id>/cycle_timeseries.csv
+    <cell_id>/rpt_diagnostic.csv
+    cell_extraction_summary.csv
+    cell_extraction_manifest.json
 
 configs/datasets/external_battery_archives.csv
 configs/datasets/external_battery_schema_map.json
@@ -79,6 +84,26 @@ file. Increase the limits gradually:
 Use `--max-members-per-type 0` only when ready for a much larger run. The
 script still reads from ZIP members directly, but output CSV files can grow
 quickly.
+
+For model-scale feature engineering, extract ZIP members into per-cell chunks:
+
+```powershell
+& "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\data_pipeline\extract_external_battery_by_cell.py
+```
+
+The default run is intentionally small: two cells, two files per measurement
+type, and 1000 rows per file. Default cell selection is anchored on
+`cycle_timeseries`, so independent RPT-only cells are not selected unless you
+ask for them. You can target explicit cells:
+
+```powershell
+& "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\data_pipeline\extract_external_battery_by_cell.py --cell-ids G3C1 G3C2 --max-members-per-cell-type 10 --rows-per-member 2000
+```
+
+Use `--max-cells 0 --max-members-per-cell-type 0` only after checking available
+disk space. Add `--rows-per-member 0` only when you intend to read every row
+from selected ZIP members. The full cycle-life archives contain tens of GB of
+CSV content.
 
 ## Why This Form Is Easier To Use
 
