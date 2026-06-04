@@ -6,6 +6,7 @@ import pandas as pd
 
 from modules.feature_engineering.build_external_battery_features import (
     build_all_features,
+    build_by_cell_features,
     build_cycle_features,
     build_rpt_features,
     build_thermal_runaway_features,
@@ -130,6 +131,38 @@ class ExternalBatteryFeatureTests(unittest.TestCase):
             self.assertTrue((output_root / "cycle_features_sample.csv").exists())
             self.assertTrue((output_root / "feature_build_summary.csv").exists())
             self.assertEqual(summaries[0].status, "written")
+
+    def test_build_by_cell_features_combines_cell_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_root = root / "by_cell"
+            for cell_id in ["G1C1", "G1C2"]:
+                cell_dir = input_root / cell_id
+                cell_dir.mkdir(parents=True)
+                pd.DataFrame(
+                    {
+                        "dataset_id": ["unit"],
+                        "dataset_family": ["multi_cell_cycle_life"],
+                        "data_category": ["cycling"],
+                        "measurement_type": ["cycle_timeseries"],
+                        "chemistry": ["li_ion"],
+                        "cell_id": [cell_id],
+                        "source_archive_name": ["unit.zip"],
+                        "archive_member_path": [f"{cell_id}/cycling 1.csv"],
+                        "cycle_index": [1],
+                        "current_a": [1.0],
+                        "voltage_v": [3.7],
+                        "capacity_ah": [0.1],
+                    }
+                ).to_csv(cell_dir / "cycle_timeseries.csv", index=False)
+
+            output_root = root / "features"
+            summaries = build_by_cell_features(input_root, output_root)
+            cycle_features = pd.read_csv(output_root / "cycle_features.csv")
+
+            self.assertEqual(summaries[0].status, "written")
+            self.assertEqual(len(cycle_features), 2)
+            self.assertEqual(set(cycle_features["cell_id"]), {"G1C1", "G1C2"})
 
 
 if __name__ == "__main__":

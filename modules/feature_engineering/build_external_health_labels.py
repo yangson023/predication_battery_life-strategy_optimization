@@ -282,18 +282,20 @@ def build_external_health_labels(
     minimum_valid_capacity_ah: float,
     cycle_capacity_column: str,
     rpt_capacity_column: str,
+    source_mode: str = "sample",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    suffix = "_sample" if source_mode == "sample" else ""
     jobs = [
         {
-            "source_table": "cycle_features_sample.csv",
-            "path": input_root / "cycle_features_sample.csv",
+            "source_table": f"cycle_features{suffix}.csv",
+            "path": input_root / f"cycle_features{suffix}.csv",
             "label_key_prefix": "capacity",
             "observation_column": "cycle_index",
             "capacity_column": cycle_capacity_column,
         },
         {
-            "source_table": "rpt_features_sample.csv",
-            "path": input_root / "rpt_features_sample.csv",
+            "source_table": f"rpt_features{suffix}.csv",
+            "path": input_root / f"rpt_features{suffix}.csv",
             "label_key_prefix": "rpt_capacity",
             "observation_column": "diagnostic_part",
             "capacity_column": rpt_capacity_column,
@@ -322,11 +324,12 @@ def build_external_health_labels(
     summary_table = pd.DataFrame([asdict(summary) for summary in all_summaries])
 
     output_root.mkdir(parents=True, exist_ok=True)
-    write_csv(labels_table, output_root / "external_health_labels_sample.csv")
-    write_csv(summary_table, output_root / "external_label_summary_sample.csv")
+    write_csv(labels_table, output_root / f"external_health_labels{suffix}.csv")
+    write_csv(summary_table, output_root / f"external_label_summary{suffix}.csv")
     write_json(
-        output_root / "external_label_manifest_sample.json",
+        output_root / f"external_label_manifest{suffix}.json",
         {
+            "source_mode": source_mode,
             "thresholds": thresholds,
             "initial_capacity_window": initial_capacity_window,
             "consecutive_eol_observations": consecutive_eol_observations,
@@ -364,6 +367,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--minimum-valid-capacity-ah", type=float, default=1e-6)
     parser.add_argument("--cycle-capacity-column", default="capacity_delta_ah")
     parser.add_argument("--rpt-capacity-column", default="capacity_delta_ah")
+    parser.add_argument(
+        "--source-mode",
+        choices=["sample", "by_cell"],
+        default="sample",
+        help="Use sample feature files or non-sample per-cell feature files.",
+    )
     return parser.parse_args()
 
 
@@ -383,9 +392,11 @@ def main() -> None:
         minimum_valid_capacity_ah=args.minimum_valid_capacity_ah,
         cycle_capacity_column=args.cycle_capacity_column,
         rpt_capacity_column=args.rpt_capacity_column,
+        source_mode=args.source_mode,
     )
+    suffix = "_sample" if args.source_mode == "sample" else ""
     print(
-        f"external_health_labels_sample.csv: rows={len(labels)}, "
+        f"external_health_labels{suffix}.csv: rows={len(labels)}, "
         f"summary_rows={len(summary)}"
     )
 

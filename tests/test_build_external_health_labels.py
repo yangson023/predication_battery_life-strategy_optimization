@@ -155,12 +155,44 @@ class ExternalHealthLabelTests(unittest.TestCase):
                 minimum_valid_capacity_ah=1e-6,
                 cycle_capacity_column="capacity_delta_ah",
                 rpt_capacity_column="capacity_delta_ah",
+                source_mode="sample",
             )
 
             self.assertFalse(labels.empty)
             self.assertFalse(summary.empty)
             self.assertTrue((input_root / "external_health_labels_sample.csv").exists())
             self.assertTrue((input_root / "external_label_summary_sample.csv").exists())
+
+    def test_build_external_health_labels_by_cell_mode_writes_full_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_root = root / "features"
+            input_root.mkdir()
+            pd.DataFrame(
+                {
+                    "dataset_id": ["unit"] * 3,
+                    "cell_id": ["G1C1"] * 3,
+                    "source_archive_name": ["unit.zip"] * 3,
+                    "cycle_index": [1, 2, 3],
+                    "capacity_delta_ah": [2.0, 1.9, 1.7],
+                }
+            ).to_csv(input_root / "cycle_features.csv", index=False)
+
+            labels, _ = build_external_health_labels(
+                input_root=input_root,
+                output_root=input_root,
+                thresholds=[0.8],
+                initial_capacity_window=1,
+                consecutive_eol_observations=1,
+                minimum_valid_capacity_ah=1e-6,
+                cycle_capacity_column="capacity_delta_ah",
+                rpt_capacity_column="capacity_delta_ah",
+                source_mode="by_cell",
+            )
+
+            self.assertFalse(labels.empty)
+            self.assertTrue((input_root / "external_health_labels.csv").exists())
+            self.assertTrue((input_root / "external_label_summary.csv").exists())
 
 
 if __name__ == "__main__":

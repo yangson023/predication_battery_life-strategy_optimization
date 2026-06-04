@@ -1,9 +1,10 @@
-"""Build feature tables from normalized external battery sample data."""
+"""Build feature tables from normalized external battery data."""
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -252,7 +253,7 @@ def write_json(path: Path, content: object) -> None:
     path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def build_all_features(input_root: Path, output_root: Path) -> list[FeatureBuildSummary]:
+def build_sample_features(input_root: Path, output_root: Path) -> list[FeatureBuildSummary]:
     output_root.mkdir(parents=True, exist_ok=True)
     jobs = [
         ("cycle_features_sample.csv", input_root / "cycle_timeseries_sample.csv", build_cycle_features),
@@ -298,9 +299,79 @@ def build_all_features(input_root: Path, output_root: Path) -> list[FeatureBuild
     return summaries
 
 
+def build_features_from_sources(
+    sources: list[Path],
+    builder: Callable[[pd.DataFrame], pd.DataFrame],
+) -> tuple[pd.DataFrame, int, list[str]]:
+    features = []
+    rows_in = 0
+    failures = []
+    for source_path in sources:
+        try:
+            source = pd.read_csv(source_path)
+            rows_in += int(source.shape[0])
+            feature_frame = builder(source)
+            if not feature_frame.empty:
+                features.append(feature_frame)
+        except Exception as exc:
+            failures.append(f"{source_path}: {exc}")
+    if not features:
+        return pd.DataFrame(), rows_in, failures
+    return pd.concat(features, ignore_index=True), rows_in, failures
+
+
+def build_by_cell_features(input_root: Path, output_root: Path) -> list[FeatureBuildSummary]:
+    output_root.mkdir(parents=True, exist_ok=True)
+    jobs = [
+        ("cycle_features.csv", "cycle_timeseries.csv", build_cycle_features),
+        ("rpt_features.csv", "rpt_diagnostic.csv", build_rpt_features),
+    ]
+    summaries = []
+    for output_name, source_name, builder in jobs:
+        sources = sorted(input_root.glob(f"*/{source_name}"))
+        if not sources:
+            summaries.append(
+                FeatureBuildSummary(
+                    feature_table=output_name,
+                    source_file=str(input_root / f"*/{source_name}"),
+                    rows_in=0,
+                    rows_out=0,
+                    columns_out=0,
+                    status="skipped",
+                    notes="no per-cell source files found",
+                )
+            )
+            continue
+        features, rows_in, failures = build_features_from_sources(sources, builder)
+        write_csv(features, output_root / output_name)
+        summaries.append(
+            FeatureBuildSummary(
+                feature_table=output_name,
+                source_file=f"{len(sources)} per-cell files",
+                rows_in=rows_in,
+                rows_out=int(features.shape[0]),
+                columns_out=int(features.shape[1]),
+                status="written" if not failures else "warn",
+                notes="; ".join(failures[:5]),
+            )
+        )
+    summary_frame = pd.DataFrame([asdict(item) for item in summaries])
+    write_csv(summary_frame, output_root / "feature_build_summary.csv")
+    write_json(output_root / "feature_build_summary.json", [asdict(item) for item in summaries])
+    return summaries
+
+
+def build_all_features(input_root: Path, output_root: Path, source_mode: str = "sample") -> list[FeatureBuildSummary]:
+    if source_mode == "sample":
+        return build_sample_features(input_root, output_root)
+    if source_mode == "by_cell":
+        return build_by_cell_features(input_root, output_root)
+    raise ValueError(f"Unsupported source mode: {source_mode}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build sample feature tables for external battery datasets."
+        description="Build feature tables for external battery datasets."
     )
     parser.add_argument(
         "--input-root",
@@ -312,12 +383,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/features/external_battery_datasets"),
     )
+    parser.add_argument(
+        "--source-mode",
+        choices=["sample", "by_cell"],
+        default="sample",
+        help="Use sample tables or per-cell chunk files as feature inputs.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    summaries = build_all_features(args.input_root, args.output_root)
+    summaries = build_all_features(args.input_root, args.output_root, args.source_mode)
     for summary in summaries:
         print(
             f"{summary.feature_table}: {summary.status}, "

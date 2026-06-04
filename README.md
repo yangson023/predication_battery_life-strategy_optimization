@@ -8,3 +8,6 @@ This repository is organized for a closed-loop intelligent battery research syst
 - track every cell, protocol, model version, action, reward, and result
 
 See `docs/branch-management.md` for the recommended branch plan.
+
+Before interpreting model or strategy results, follow the research rigor
+reminder in `docs/research-rigor-prompt.md`.
