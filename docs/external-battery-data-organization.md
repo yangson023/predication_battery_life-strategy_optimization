@@ -100,6 +100,16 @@ ask for them. You can target explicit cells:
 & "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\data_pipeline\extract_external_battery_by_cell.py --cell-ids G3C1 G3C2 --max-members-per-cell-type 10 --rows-per-member 2000
 ```
 
+Small trainable set used for the first external cycle-life experiments:
+
+```powershell
+& "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\data_pipeline\extract_external_battery_by_cell.py --cell-ids G1C1 G1C2 G1C3 --max-members-per-cell-type 10 --rows-per-member 0
+```
+
+This reads 10 cycle files and 10 RPT files for each listed cell. The current
+run wrote 60 members with no failures and produced per-cell CSV chunks under
+`data/processed/external_battery_datasets/by_cell`.
+
 Use `--max-cells 0 --max-members-per-cell-type 0` only after checking available
 disk space. Add `--rows-per-member 0` only when you intend to read every row
 from selected ZIP members. The full cycle-life archives contain tens of GB of

@@ -244,8 +244,10 @@ def extract_by_cell(
         output_root / "cell_extraction_manifest.json",
         {
             "measurement_types": measurement_types,
+            "requested_cell_ids": cell_ids,
             "cell_ids": sorted({row.cell_id for row in summary if row.cell_id}),
-            "max_cells": max_cells,
+            "selection_mode": "explicit_cell_ids" if cell_ids else "max_cells_from_anchor",
+            "max_cells": None if cell_ids else max_cells,
             "max_members_per_cell_type": max_members_per_cell_type,
             "rows_per_member": rows_per_member,
             "anchor_measurement_type": anchor_measurement_type,
