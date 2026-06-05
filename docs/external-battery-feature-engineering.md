@@ -20,6 +20,7 @@ data/features/external_battery_datasets/
   external_health_labels.csv
   external_label_summary.csv
   external_label_manifest.json
+  protocol_regime_summary.csv
   cycle_features_sample.csv
   rpt_features_sample.csv
   thermal_runaway_features_sample.csv
@@ -34,12 +35,36 @@ data/features/external_battery_datasets/
 
 | Table | Grouping | Examples |
 | --- | --- | --- |
-| `cycle_features_sample.csv` | `cell_id`, `cycle_index`, source member | voltage/current/capacity/energy summaries, duration, charge/discharge state fractions |
+| `cycle_features_sample.csv` | `cell_id`, `cycle_index`, source member | voltage/current/capacity/energy summaries, duration, charge/discharge state fractions, protocol boundary diagnostics |
 | `rpt_features_sample.csv` | `cell_id`, `diagnostic_part`, source member | diagnostic capacity range, voltage drop, pulse SOC summary, pulse type count |
 | `thermal_runaway_features_sample.csv` | source member, SOC, capacity, replicate | peak temperature, voltage minimum, max load/force, max displacement, safety event hint |
 
 The non-sample `cycle_features.csv` and `rpt_features.csv` use the same feature
 definitions, but they are built from `data/processed/external_battery_datasets/by_cell`.
+When building by-cell features, the pipeline also writes
+`protocol_regime_summary.csv`.
+
+## Protocol Diagnostics
+
+External cycle-life data may contain early formation effects or explicit protocol
+changes. A local capacity drop after such a change is not automatically a
+full-life EOL event.
+
+`cycle_features.csv` therefore includes protocol diagnostic fields:
+
+| Field | Meaning |
+| --- | --- |
+| `protocol_current_relative_change` | Relative change in `absolute_current_mean_a` from the previous cycle in the same cell |
+| `protocol_charge_fraction_delta` | Absolute change in `charge_state_fraction` from the previous cycle |
+| `protocol_duration_relative_change` | Relative change in cycle duration from the previous cycle |
+| `protocol_boundary_flag` | True when current, charge-state fraction, or duration crosses the configured shift threshold |
+| `protocol_boundary_reason` | Semicolon-separated reason for the boundary flag |
+| `protocol_regime_index` | Consecutive protocol segment number within each cell |
+
+`protocol_regime_summary.csv` aggregates each cell/regime segment and marks
+short segments as `limited_protocol_window_less_than_50_observations`. RUL
+training should not treat a threshold crossing inside such a segment as a final
+EOL claim.
 
 The thermal runaway table is kept separate from SOH/RUL labels. It should feed
 future safety-risk and strategy-constraint models, not the first RUL baseline.
@@ -59,6 +84,11 @@ Rows are marked with `label_quality`. Short extraction windows are marked as
 using these labels for final model training. A threshold crossing inside a
 short extraction window is a local diagnostic, not a confirmed full-life EOL
 claim.
+
+When `cycle_features.csv` includes `protocol_regime_index`, external cycle
+labels are generated separately for each protocol regime. This prevents an
+initial capacity from one protocol segment from being used to define EOL in a
+later segment with a different current, duration, or charge/discharge state mix.
 
 ## Command
 
@@ -94,5 +124,6 @@ Run the data extraction step first if sample inputs are missing:
 ## Next Step
 
 Once the sample feature tables look stable, increase extraction limits and build
-full chunked features per cell. Then define external SOH/RUL labels from cycle
-capacity and RPT diagnostic capacity.
+larger chunked features per cell. Before training on external labels, inspect
+`protocol_regime_summary.csv` and confirm that each target label is computed
+inside a sufficiently long and protocol-consistent observation window.

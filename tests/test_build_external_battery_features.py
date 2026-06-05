@@ -5,9 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 from modules.feature_engineering.build_external_battery_features import (
+    build_protocol_regime_summary,
     build_all_features,
     build_by_cell_features,
+    charge_state_fraction,
     build_cycle_features,
+    discharge_state_fraction,
     build_rpt_features,
     build_thermal_runaway_features,
     elapsed_seconds_from_relative_time,
@@ -18,6 +21,12 @@ class ExternalBatteryFeatureTests(unittest.TestCase):
     def test_relative_time_parser_handles_hms(self) -> None:
         self.assertAlmostEqual(elapsed_seconds_from_relative_time("1:02:03.5"), 3723.5)
         self.assertAlmostEqual(elapsed_seconds_from_relative_time("02:03.5"), 123.5)
+
+    def test_state_fractions_do_not_count_dchg_as_charge(self) -> None:
+        frame = pd.DataFrame({"state": ["CC_Chg", "CC_DChg", "CC_DChg"]})
+
+        self.assertAlmostEqual(charge_state_fraction(frame), 1 / 3)
+        self.assertAlmostEqual(discharge_state_fraction(frame), 2 / 3)
 
     def test_cycle_features_group_by_cell_and_cycle(self) -> None:
         frame = pd.DataFrame(
@@ -49,6 +58,64 @@ class ExternalBatteryFeatureTests(unittest.TestCase):
         self.assertAlmostEqual(features.loc[0, "capacity_delta_ah"], 1.0)
         self.assertAlmostEqual(features.loc[0, "duration_s"], 20.0)
         self.assertAlmostEqual(features.loc[0, "discharge_state_fraction"], 2 / 3)
+
+    def test_cycle_features_flag_protocol_boundaries(self) -> None:
+        rows = []
+        for cycle_index, current, duration, states in [
+            (1, 3.0, "0:20:00", ["CC_Chg", "CC_DChg"]),
+            (2, 3.1, "0:21:00", ["CC_Chg", "CC_DChg"]),
+            (3, 0.6, "1:40:00", ["CC_Chg", "CC_Chg"]),
+        ]:
+            rows.extend(
+                [
+                    {
+                        "dataset_id": "unit",
+                        "dataset_family": "multi_cell_cycle_life",
+                        "data_category": "cycling",
+                        "measurement_type": "cycle_timeseries",
+                        "chemistry": "li_ion",
+                        "cell_id": "G1C1",
+                        "source_archive_name": "unit.zip",
+                        "archive_member_path": f"G1C1/cycling {cycle_index}.csv",
+                        "cycle_index": cycle_index,
+                        "current_a": current,
+                        "voltage_v": 3.7,
+                        "capacity_ah": 0.1,
+                        "relative_time_raw": "0:00:00",
+                        "state": states[0],
+                    },
+                    {
+                        "dataset_id": "unit",
+                        "dataset_family": "multi_cell_cycle_life",
+                        "data_category": "cycling",
+                        "measurement_type": "cycle_timeseries",
+                        "chemistry": "li_ion",
+                        "cell_id": "G1C1",
+                        "source_archive_name": "unit.zip",
+                        "archive_member_path": f"G1C1/cycling {cycle_index}.csv",
+                        "cycle_index": cycle_index,
+                        "current_a": -current,
+                        "voltage_v": 3.6,
+                        "capacity_ah": 0.9,
+                        "relative_time_raw": duration,
+                        "state": states[1],
+                    },
+                ]
+            )
+
+        features = build_cycle_features(pd.DataFrame(rows))
+        summary = build_protocol_regime_summary(features)
+
+        self.assertFalse(bool(features.loc[0, "protocol_boundary_flag"]))
+        self.assertFalse(bool(features.loc[1, "protocol_boundary_flag"]))
+        self.assertTrue(bool(features.loc[2, "protocol_boundary_flag"]))
+        self.assertIn("absolute_current_mean_shift", features.loc[2, "protocol_boundary_reason"])
+        self.assertEqual(features["protocol_regime_index"].tolist(), [1, 1, 2])
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(
+            set(summary["protocol_window_quality"]),
+            {"limited_protocol_window_less_than_50_observations"},
+        )
 
     def test_rpt_features_include_voltage_drop_and_pulse_count(self) -> None:
         frame = pd.DataFrame(
@@ -163,6 +230,7 @@ class ExternalBatteryFeatureTests(unittest.TestCase):
             self.assertEqual(summaries[0].status, "written")
             self.assertEqual(len(cycle_features), 2)
             self.assertEqual(set(cycle_features["cell_id"]), {"G1C1", "G1C2"})
+            self.assertTrue((output_root / "protocol_regime_summary.csv").exists())
 
 
 if __name__ == "__main__":

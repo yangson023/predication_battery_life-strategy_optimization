@@ -37,6 +37,12 @@ class FeatureBuildSummary:
     notes: str
 
 
+PROTOCOL_CURRENT_RELATIVE_CHANGE_THRESHOLD = 0.30
+PROTOCOL_CHARGE_FRACTION_DELTA_THRESHOLD = 0.08
+PROTOCOL_DURATION_RELATIVE_CHANGE_THRESHOLD = 1.00
+MIN_PROTOCOL_REGIME_OBSERVATIONS_FOR_LABELS = 50
+
+
 def numeric_series(frame: pd.DataFrame, column: str) -> pd.Series:
     if column not in frame.columns:
         return pd.Series(dtype=float)
@@ -111,6 +117,133 @@ def state_fraction(frame: pd.DataFrame, pattern: str) -> float:
     return float(matches.mean())
 
 
+def charge_state_fraction(frame: pd.DataFrame) -> float:
+    if "state" not in frame.columns or frame.empty:
+        return np.nan
+    state = frame["state"].astype(str).str.lower()
+    discharge = state.str.contains("dchg|discharge", na=False)
+    charge = state.str.contains("chg|charge", na=False) & ~discharge
+    return float(charge.mean())
+
+
+def discharge_state_fraction(frame: pd.DataFrame) -> float:
+    return state_fraction(frame, "dchg|discharge")
+
+
+def relative_change(current: object, previous: object) -> float:
+    current_value = pd.to_numeric(pd.Series([current]), errors="coerce").iloc[0]
+    previous_value = pd.to_numeric(pd.Series([previous]), errors="coerce").iloc[0]
+    if pd.isna(current_value) or pd.isna(previous_value) or abs(previous_value) <= 1e-12:
+        return np.nan
+    return float(abs(current_value - previous_value) / abs(previous_value))
+
+
+def absolute_delta(current: object, previous: object) -> float:
+    current_value = pd.to_numeric(pd.Series([current]), errors="coerce").iloc[0]
+    previous_value = pd.to_numeric(pd.Series([previous]), errors="coerce").iloc[0]
+    if pd.isna(current_value) or pd.isna(previous_value):
+        return np.nan
+    return float(abs(current_value - previous_value))
+
+
+def protocol_boundary_reasons(row: pd.Series) -> list[str]:
+    reasons = []
+    current_change = row.get("protocol_current_relative_change", np.nan)
+    charge_delta = row.get("protocol_charge_fraction_delta", np.nan)
+    duration_change = row.get("protocol_duration_relative_change", np.nan)
+    if pd.notna(current_change) and current_change > PROTOCOL_CURRENT_RELATIVE_CHANGE_THRESHOLD:
+        reasons.append("absolute_current_mean_shift")
+    if pd.notna(charge_delta) and charge_delta > PROTOCOL_CHARGE_FRACTION_DELTA_THRESHOLD:
+        reasons.append("charge_state_fraction_shift")
+    if pd.notna(duration_change) and duration_change > PROTOCOL_DURATION_RELATIVE_CHANGE_THRESHOLD:
+        reasons.append("duration_shift")
+    return reasons
+
+
+def add_protocol_diagnostics(features: pd.DataFrame) -> pd.DataFrame:
+    if features.empty or "cell_id" not in features.columns:
+        return features
+    output = features.copy()
+    sort_columns = [
+        column
+        for column in ["cell_id", "cycle_index", "source_archive_name", "archive_member_path"]
+        if column in output.columns
+    ]
+    output = output.sort_values(sort_columns, na_position="last").reset_index(drop=True)
+
+    diagnostic_rows = []
+    for _, group in output.groupby("cell_id", dropna=False, sort=False):
+        previous = None
+        regime_index = 1
+        for _, row in group.iterrows():
+            current_change = (
+                relative_change(row.get("absolute_current_mean_a"), previous.get("absolute_current_mean_a"))
+                if previous is not None
+                else np.nan
+            )
+            charge_delta = (
+                absolute_delta(row.get("charge_state_fraction"), previous.get("charge_state_fraction"))
+                if previous is not None
+                else np.nan
+            )
+            duration_change = (
+                relative_change(row.get("duration_s"), previous.get("duration_s"))
+                if previous is not None
+                else np.nan
+            )
+            row = row.copy()
+            row["protocol_current_relative_change"] = current_change
+            row["protocol_charge_fraction_delta"] = charge_delta
+            row["protocol_duration_relative_change"] = duration_change
+            reasons = protocol_boundary_reasons(row)
+            row["protocol_boundary_flag"] = bool(reasons)
+            row["protocol_boundary_reason"] = ";".join(reasons)
+            if reasons:
+                regime_index += 1
+            row["protocol_regime_index"] = regime_index
+            diagnostic_rows.append(row)
+            previous = row
+
+    return pd.DataFrame(diagnostic_rows)
+
+
+def build_protocol_regime_summary(cycle_features: pd.DataFrame) -> pd.DataFrame:
+    if cycle_features.empty or "protocol_regime_index" not in cycle_features.columns:
+        return pd.DataFrame()
+    rows = []
+    group_columns = ["cell_id", "protocol_regime_index"]
+    for (cell_id, regime_index), group in cycle_features.groupby(group_columns, dropna=False, sort=True):
+        observations = int(len(group))
+        first_row = group.iloc[0]
+        rows.append(
+            {
+                "cell_id": cell_id,
+                "protocol_regime_index": int(regime_index),
+                "observations": observations,
+                "cycle_index_min": group["cycle_index"].min() if "cycle_index" in group.columns else "",
+                "cycle_index_max": group["cycle_index"].max() if "cycle_index" in group.columns else "",
+                "boundary_started_regime": bool(first_row.get("protocol_boundary_flag", False)),
+                "boundary_reason": first_row.get("protocol_boundary_reason", ""),
+                "absolute_current_mean_a_median": float(group["absolute_current_mean_a"].median())
+                if "absolute_current_mean_a" in group.columns
+                else np.nan,
+                "charge_state_fraction_median": float(group["charge_state_fraction"].median())
+                if "charge_state_fraction" in group.columns
+                else np.nan,
+                "duration_s_median": float(group["duration_s"].median()) if "duration_s" in group.columns else np.nan,
+                "capacity_delta_ah_median": float(group["capacity_delta_ah"].median())
+                if "capacity_delta_ah" in group.columns
+                else np.nan,
+                "protocol_window_quality": (
+                    "usable_protocol_window"
+                    if observations >= MIN_PROTOCOL_REGIME_OBSERVATIONS_FOR_LABELS
+                    else f"limited_protocol_window_less_than_{MIN_PROTOCOL_REGIME_OBSERVATIONS_FOR_LABELS}_observations"
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def base_group_identity(group: pd.DataFrame) -> dict[str, object]:
     identity = {}
     for column in GROUP_ID_COLUMNS:
@@ -133,8 +266,8 @@ def build_cycle_features(frame: pd.DataFrame) -> pd.DataFrame:
         add_numeric_summary(features, group, "voltage_v", "voltage_v")
         add_numeric_summary(features, group, "capacity_ah", "capacity_ah")
         add_numeric_summary(features, group, "energy_wh", "energy_wh")
-        features["charge_state_fraction"] = state_fraction(group, "chg|charge")
-        features["discharge_state_fraction"] = state_fraction(group, "dchg|discharge")
+        features["charge_state_fraction"] = charge_state_fraction(group)
+        features["discharge_state_fraction"] = discharge_state_fraction(group)
         features["absolute_current_mean_a"] = float(numeric_series(group, "current_a").abs().mean())
         features["capacity_delta_ah"] = (
             features["capacity_ah_max"] - features["capacity_ah_min"]
@@ -143,7 +276,8 @@ def build_cycle_features(frame: pd.DataFrame) -> pd.DataFrame:
         )
         rows.append(features)
     output = pd.DataFrame(rows)
-    return output.sort_values(["cell_id", "cycle_index", "source_archive_name"], na_position="last")
+    output = output.sort_values(["cell_id", "cycle_index", "source_archive_name"], na_position="last")
+    return add_protocol_diagnostics(output)
 
 
 def build_rpt_features(frame: pd.DataFrame) -> pd.DataFrame:
@@ -344,6 +478,16 @@ def build_by_cell_features(input_root: Path, output_root: Path) -> list[FeatureB
             continue
         features, rows_in, failures = build_features_from_sources(sources, builder)
         write_csv(features, output_root / output_name)
+        if output_name == "cycle_features.csv":
+            protocol_summary = build_protocol_regime_summary(features)
+            write_csv(protocol_summary, output_root / "protocol_regime_summary.csv")
+            protocol_note = (
+                f"protocol_regimes={len(protocol_summary)}"
+                if not protocol_summary.empty
+                else "protocol_regimes=0"
+            )
+        else:
+            protocol_note = ""
         summaries.append(
             FeatureBuildSummary(
                 feature_table=output_name,
@@ -352,7 +496,7 @@ def build_by_cell_features(input_root: Path, output_root: Path) -> list[FeatureB
                 rows_out=int(features.shape[0]),
                 columns_out=int(features.shape[1]),
                 status="written" if not failures else "warn",
-                notes="; ".join(failures[:5]),
+                notes="; ".join([note for note in [protocol_note, *failures[:5]] if note]),
             )
         )
     summary_frame = pd.DataFrame([asdict(item) for item in summaries])

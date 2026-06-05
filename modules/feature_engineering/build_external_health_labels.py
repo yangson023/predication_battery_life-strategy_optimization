@@ -23,6 +23,12 @@ IDENTITY_COLUMNS = [
     "source_archive_name",
 ]
 
+LABEL_CONTEXT_COLUMNS = [
+    "protocol_regime_index",
+    "protocol_boundary_flag",
+    "protocol_boundary_reason",
+]
+
 
 @dataclass
 class LabelBuildSummary:
@@ -30,6 +36,7 @@ class LabelBuildSummary:
     label_key_prefix: str
     capacity_column: str
     group_id: str
+    protocol_regime_index: object
     observations: int
     valid_capacity_observations: int
     initial_capacity_ah: float
@@ -67,7 +74,7 @@ def numeric_or_nan(value: object) -> float:
 
 def group_identity(frame: pd.DataFrame) -> dict[str, object]:
     identity = {}
-    for column in IDENTITY_COLUMNS:
+    for column in [*IDENTITY_COLUMNS, *LABEL_CONTEXT_COLUMNS]:
         identity[column] = frame[column].iloc[0] if column in frame.columns else ""
     return identity
 
@@ -136,8 +143,14 @@ def build_labels_for_feature_group(
     last_observation_number = float(observation_numbers.iloc[-1]) if len(observation_numbers) else np.nan
     group_id = "|".join(
         str(identity.get(column, ""))
-        for column in ["dataset_id", "cell_id", "source_archive_name"]
+        for column in ["dataset_id", "cell_id", "source_archive_name", "protocol_regime_index"]
+        if identity.get(column, "") != ""
     )
+    label_context = {
+        column: group[column].reset_index(drop=True)
+        for column in LABEL_CONTEXT_COLUMNS
+        if column in group.columns
+    }
 
     for threshold in thresholds:
         label_key = f"{label_key_prefix}_eol_{int(round(threshold * 100))}"
@@ -174,6 +187,7 @@ def build_labels_for_feature_group(
         label_frame = pd.DataFrame(
             {
                 **{column: identity.get(column, "") for column in IDENTITY_COLUMNS},
+                **label_context,
                 "source_table": source_table,
                 "label_key": label_key,
                 "label_key_prefix": label_key_prefix,
@@ -210,6 +224,7 @@ def build_labels_for_feature_group(
                 label_key_prefix=label_key_prefix,
                 capacity_column=capacity_column,
                 group_id=group_id,
+                protocol_regime_index=identity.get("protocol_regime_index", ""),
                 observations=int(len(group)),
                 valid_capacity_observations=int(len(valid_capacity)),
                 initial_capacity_ah=initial_capacity,
@@ -253,7 +268,7 @@ def build_labels_from_feature_table(
         raise ValueError(f"Missing capacity column: {capacity_column}")
     group_columns = [
         column
-        for column in ["dataset_id", "cell_id", "source_archive_name"]
+        for column in ["dataset_id", "cell_id", "source_archive_name", "protocol_regime_index"]
         if column in frame.columns
     ]
     all_labels = []
@@ -281,9 +296,19 @@ def write_csv(frame: pd.DataFrame, path: Path) -> None:
     frame.to_csv(path, index=False)
 
 
+def json_safe(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
 def write_json(path: Path, content: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(json_safe(content), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def build_external_health_labels(

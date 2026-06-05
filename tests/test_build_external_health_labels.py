@@ -111,6 +111,37 @@ class ExternalHealthLabelTests(unittest.TestCase):
             "limited_window_less_than_50_observations",
         )
 
+    def test_protocol_regime_index_splits_label_groups(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "dataset_id": ["unit"] * 6,
+                "cell_id": ["G1C1"] * 6,
+                "source_archive_name": ["unit.zip"] * 6,
+                "protocol_regime_index": [1, 1, 1, 2, 2, 2],
+                "protocol_boundary_flag": [False, False, False, True, False, False],
+                "cycle_index": [1, 2, 3, 4, 5, 6],
+                "capacity_delta_ah": [2.0, 1.9, 1.8, 1.0, 0.95, 0.9],
+            }
+        )
+
+        labels, summary = build_labels_from_feature_table(
+            frame=frame,
+            source_table="cycle_features.csv",
+            label_key_prefix="capacity",
+            observation_column="cycle_index",
+            capacity_column="capacity_delta_ah",
+            thresholds=[0.8],
+            initial_capacity_window=1,
+            consecutive_eol_observations=1,
+            minimum_valid_capacity_ah=1e-6,
+        )
+
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(set(labels["protocol_regime_index"]), {1, 2})
+        self.assertTrue(labels["eol_observed"].eq(False).all())
+        self.assertIn("1", summary[0].group_id)
+        self.assertIn("2", summary[1].group_id)
+
     def test_invalid_initial_capacity_is_marked(self) -> None:
         frame = pd.DataFrame(
             {
