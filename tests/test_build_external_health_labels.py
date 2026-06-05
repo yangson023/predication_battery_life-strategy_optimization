@@ -78,6 +78,39 @@ class ExternalHealthLabelTests(unittest.TestCase):
         self.assertEqual(labels["rul_lower_bound_observations"].tolist(), [1.0, 0.0])
         self.assertFalse(summary[0].eol_observed)
 
+    def test_limited_window_quality_marks_short_training_groups(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "dataset_id": ["unit"] * 10,
+                "cell_id": ["G1C1"] * 10,
+                "source_archive_name": ["unit.zip"] * 10,
+                "cycle_index": list(range(1, 11)),
+                "capacity_delta_ah": [2.0, 1.95, 1.9, 1.85, 1.8, 1.75, 1.7, 1.6, 1.55, 1.5],
+            }
+        )
+
+        labels, summary = build_labels_from_feature_table(
+            frame=frame,
+            source_table="cycle_features.csv",
+            label_key_prefix="capacity",
+            observation_column="cycle_index",
+            capacity_column="capacity_delta_ah",
+            thresholds=[0.8],
+            initial_capacity_window=1,
+            consecutive_eol_observations=1,
+            minimum_valid_capacity_ah=1e-6,
+            minimum_observations_for_training=50,
+        )
+
+        self.assertEqual(
+            labels["label_quality"].unique().tolist(),
+            ["limited_window_less_than_50_observations"],
+        )
+        self.assertEqual(
+            summary[0].label_quality,
+            "limited_window_less_than_50_observations",
+        )
+
     def test_invalid_initial_capacity_is_marked(self) -> None:
         frame = pd.DataFrame(
             {

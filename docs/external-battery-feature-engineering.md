@@ -54,9 +54,11 @@ RPT feature tables into SOH/RUL-style labels. The default label keys are:
 | `capacity_eol_70/75/80` | `cycle_features_sample.csv` | `capacity_delta_ah` |
 | `rpt_capacity_eol_70/75/80` | `rpt_features_sample.csv` | `capacity_delta_ah` |
 
-Rows are marked with `label_quality`. Small samples usually remain censored or
-`sample_only_less_than_3_observations`; full extraction is needed before using
-these labels for final model training.
+Rows are marked with `label_quality`. Short extraction windows are marked as
+`limited_window_less_than_50_observations`; full extraction is needed before
+using these labels for final model training. A threshold crossing inside a
+short extraction window is a local diagnostic, not a confirmed full-life EOL
+claim.
 
 ## Command
 

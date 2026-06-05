@@ -85,11 +85,17 @@ def sort_observations(frame: pd.DataFrame, observation_column: str) -> pd.DataFr
     )
 
 
-def label_quality_for_group(valid_capacity: pd.Series, initial_capacity: float) -> str:
+def label_quality_for_group(
+    valid_capacity: pd.Series,
+    initial_capacity: float,
+    minimum_observations_for_training: int,
+) -> str:
     if valid_capacity.empty:
         return "invalid_no_positive_capacity"
     if not np.isfinite(initial_capacity) or initial_capacity <= 0:
         return "invalid_initial_capacity"
+    if len(valid_capacity) < minimum_observations_for_training:
+        return f"limited_window_less_than_{minimum_observations_for_training}_observations"
     if len(valid_capacity) < 3:
         return "sample_only_less_than_3_observations"
     return "usable"
@@ -105,6 +111,7 @@ def build_labels_for_feature_group(
     initial_capacity_window: int,
     consecutive_eol_observations: int,
     minimum_valid_capacity_ah: float,
+    minimum_observations_for_training: int = 3,
 ) -> tuple[pd.DataFrame, list[LabelBuildSummary]]:
     group = sort_observations(group, observation_column)
     capacity = pd.to_numeric(group[capacity_column], errors="coerce")
@@ -114,7 +121,11 @@ def build_labels_for_feature_group(
         if not valid_capacity.empty
         else np.nan
     )
-    quality = label_quality_for_group(valid_capacity, initial_capacity)
+    quality = label_quality_for_group(
+        valid_capacity,
+        initial_capacity,
+        minimum_observations_for_training,
+    )
     labels_by_threshold = []
     summaries = []
 
@@ -232,6 +243,7 @@ def build_labels_from_feature_table(
     initial_capacity_window: int,
     consecutive_eol_observations: int,
     minimum_valid_capacity_ah: float,
+    minimum_observations_for_training: int = 3,
 ) -> tuple[pd.DataFrame, list[LabelBuildSummary]]:
     if frame.empty:
         return pd.DataFrame(), []
@@ -257,6 +269,7 @@ def build_labels_from_feature_table(
             initial_capacity_window=initial_capacity_window,
             consecutive_eol_observations=consecutive_eol_observations,
             minimum_valid_capacity_ah=minimum_valid_capacity_ah,
+            minimum_observations_for_training=minimum_observations_for_training,
         )
         all_labels.append(labels)
         all_summaries.extend(summaries)
@@ -283,6 +296,7 @@ def build_external_health_labels(
     cycle_capacity_column: str,
     rpt_capacity_column: str,
     source_mode: str = "sample",
+    minimum_observations_for_training: int = 50,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     suffix = "_sample" if source_mode == "sample" else ""
     jobs = [
@@ -317,6 +331,7 @@ def build_external_health_labels(
             initial_capacity_window=initial_capacity_window,
             consecutive_eol_observations=consecutive_eol_observations,
             minimum_valid_capacity_ah=minimum_valid_capacity_ah,
+            minimum_observations_for_training=minimum_observations_for_training,
         )
         all_labels.append(labels)
         all_summaries.extend(summaries)
@@ -334,6 +349,7 @@ def build_external_health_labels(
             "initial_capacity_window": initial_capacity_window,
             "consecutive_eol_observations": consecutive_eol_observations,
             "minimum_valid_capacity_ah": minimum_valid_capacity_ah,
+            "minimum_observations_for_training": minimum_observations_for_training,
             "cycle_capacity_column": cycle_capacity_column,
             "rpt_capacity_column": rpt_capacity_column,
             "summaries": [asdict(summary) for summary in all_summaries],
@@ -365,6 +381,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--initial-capacity-window", type=int, default=1)
     parser.add_argument("--consecutive-eol-observations", type=int, default=1)
     parser.add_argument("--minimum-valid-capacity-ah", type=float, default=1e-6)
+    parser.add_argument(
+        "--minimum-observations-for-training",
+        type=int,
+        default=50,
+        help="Groups below this count are marked as limited-window labels.",
+    )
     parser.add_argument("--cycle-capacity-column", default="capacity_delta_ah")
     parser.add_argument("--rpt-capacity-column", default="capacity_delta_ah")
     parser.add_argument(
@@ -393,6 +415,7 @@ def main() -> None:
         cycle_capacity_column=args.cycle_capacity_column,
         rpt_capacity_column=args.rpt_capacity_column,
         source_mode=args.source_mode,
+        minimum_observations_for_training=args.minimum_observations_for_training,
     )
     suffix = "_sample" if args.source_mode == "sample" else ""
     print(
