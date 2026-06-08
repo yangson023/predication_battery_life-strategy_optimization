@@ -43,3 +43,4 @@
 | 2026-06-05 | P1 | Stabilize external initial capacity definition | Not executed | Evaluate `initial_capacity_window=5` after protocol-consistent windows are available. |
 | 2026-06-05 | P1 | Filter complete RPT capacity diagnostics before fusion | Not executed | Candidate rule: compare `pulse_type_count`, `capacity_delta_ah`, and cycle capacity consistency. |
 | 2026-06-08 | P0 | Add trainability guards for external health labels | Executed | Cycle EOL crossings near protocol-regime boundaries are excluded from training; RPT labels are excluded until protocol-regime assignment exists. |
+| 2026-06-08 | P0 | Export trainable label audit artifacts before modeling | Executed | Trainable cycle labels, excluded labels, coverage matrix, and audit reports are generated before any exploratory baseline. |

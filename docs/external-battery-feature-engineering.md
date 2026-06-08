@@ -109,6 +109,12 @@ marked `excluded_unknown_or_unmapped` until a reliable RPT-to-protocol-regime
 assignment is implemented. RPT labels may be used as diagnostics, but not as
 training targets.
 
+Before any exploratory model work, run
+`modules/feature_engineering/audit_external_trainable_labels.py`. The audit
+exports trainable cycle-only labels, excluded labels, a label coverage matrix,
+and a JSON/Markdown report under `outputs/label_audit/external_trainable_labels`.
+This audit is a data-readiness artifact, not a model-performance result.
+
 ## Command
 
 ```powershell
