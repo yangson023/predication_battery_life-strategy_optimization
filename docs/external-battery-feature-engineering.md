@@ -90,6 +90,25 @@ labels are generated separately for each protocol regime. This prevents an
 initial capacity from one protocol segment from being used to define EOL in a
 later segment with a different current, duration, or charge/discharge state mix.
 
+`label_quality` only describes observation-count and capacity validity. It does
+not mean a row is safe for training. The label builder also writes trainability
+guard fields:
+
+| Field | Meaning |
+| --- | --- |
+| `protocol_assignment_quality` | Whether the label group has a usable protocol-regime assignment |
+| `eol_boundary_quality` | Whether an observed EOL crossing is away from protocol-regime boundaries |
+| `eol_distance_from_regime_start` | Observed EOL distance from the start of the current protocol regime |
+| `eol_distance_to_regime_end` | Observed EOL distance to the end of the current protocol regime |
+| `trainable_label` | True only when the label is usable, protocol-consistent, and not a boundary crossing |
+| `trainable_label_quality` | Reason why the label is trainable or excluded |
+
+By default, observed EOL crossings within five observations of a protocol-regime
+start or end are marked `excluded_unreliable_boundary_crossing`. RPT labels are
+marked `excluded_unknown_or_unmapped` until a reliable RPT-to-protocol-regime
+assignment is implemented. RPT labels may be used as diagnostics, but not as
+training targets.
+
 ## Command
 
 ```powershell

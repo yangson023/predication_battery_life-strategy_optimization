@@ -29,6 +29,8 @@ LABEL_CONTEXT_COLUMNS = [
     "protocol_boundary_reason",
 ]
 
+DEFAULT_PROTOCOL_BOUNDARY_EXCLUSION_OBSERVATIONS = 5
+
 
 @dataclass
 class LabelBuildSummary:
@@ -49,6 +51,12 @@ class LabelBuildSummary:
     censored_at_observation_index: float
     duration_observations: int
     label_quality: str
+    protocol_assignment_quality: str
+    eol_boundary_quality: str
+    eol_distance_from_regime_start: float
+    eol_distance_to_regime_end: float
+    trainable_label: bool
+    trainable_label_quality: str
 
 
 def find_first_sustained_crossing(
@@ -108,6 +116,59 @@ def label_quality_for_group(
     return "usable"
 
 
+def has_protocol_regime(group: pd.DataFrame) -> bool:
+    if "protocol_regime_index" not in group.columns:
+        return False
+    values = pd.to_numeric(group["protocol_regime_index"], errors="coerce")
+    return values.notna().all()
+
+
+def protocol_assignment_quality_for_group(
+    source_table: str,
+    group: pd.DataFrame,
+) -> str:
+    if source_table.startswith("rpt_features"):
+        return "unknown_or_unmapped"
+    if has_protocol_regime(group):
+        return "protocol_regime_assigned"
+    return "protocol_regime_missing"
+
+
+def eol_boundary_quality_for_group(
+    eol_observed: bool,
+    eol_observation_number: float,
+    first_observation_number: float,
+    last_observation_number: float,
+    boundary_exclusion_observations: int,
+) -> tuple[str, float, float]:
+    if not eol_observed or not np.isfinite(eol_observation_number):
+        return "not_observed", np.nan, np.nan
+    distance_from_start = eol_observation_number - first_observation_number
+    distance_to_end = last_observation_number - eol_observation_number
+    if (
+        distance_from_start <= boundary_exclusion_observations
+        or distance_to_end <= boundary_exclusion_observations
+    ):
+        return "unreliable_boundary_crossing", float(distance_from_start), float(distance_to_end)
+    return "away_from_protocol_boundary", float(distance_from_start), float(distance_to_end)
+
+
+def trainable_label_quality_for_group(
+    label_quality: str,
+    protocol_assignment_quality: str,
+    eol_boundary_quality: str,
+) -> tuple[bool, str]:
+    if label_quality != "usable":
+        return False, label_quality
+    if protocol_assignment_quality != "protocol_regime_assigned":
+        return False, f"excluded_{protocol_assignment_quality}"
+    if eol_boundary_quality == "unreliable_boundary_crossing":
+        return False, "excluded_unreliable_boundary_crossing"
+    if eol_boundary_quality == "not_observed":
+        return True, "trainable_censored_protocol_consistent"
+    return True, "trainable_observed_protocol_consistent"
+
+
 def build_labels_for_feature_group(
     group: pd.DataFrame,
     source_table: str,
@@ -119,6 +180,7 @@ def build_labels_for_feature_group(
     consecutive_eol_observations: int,
     minimum_valid_capacity_ah: float,
     minimum_observations_for_training: int = 3,
+    protocol_boundary_exclusion_observations: int = DEFAULT_PROTOCOL_BOUNDARY_EXCLUSION_OBSERVATIONS,
 ) -> tuple[pd.DataFrame, list[LabelBuildSummary]]:
     group = sort_observations(group, observation_column)
     capacity = pd.to_numeric(group[capacity_column], errors="coerce")
@@ -140,6 +202,7 @@ def build_labels_for_feature_group(
     observation_values = pd.to_numeric(group[observation_column], errors="coerce")
     fallback_observation_numbers = pd.Series(np.arange(1, len(group) + 1), index=group.index)
     observation_numbers = observation_values.fillna(fallback_observation_numbers)
+    first_observation_number = float(observation_numbers.iloc[0]) if len(observation_numbers) else np.nan
     last_observation_number = float(observation_numbers.iloc[-1]) if len(observation_numbers) else np.nan
     group_id = "|".join(
         str(identity.get(column, ""))
@@ -151,6 +214,7 @@ def build_labels_for_feature_group(
         for column in LABEL_CONTEXT_COLUMNS
         if column in group.columns
     }
+    protocol_assignment_quality = protocol_assignment_quality_for_group(source_table, group)
 
     for threshold in thresholds:
         label_key = f"{label_key_prefix}_eol_{int(round(threshold * 100))}"
@@ -171,6 +235,22 @@ def build_labels_for_feature_group(
             float(observation_numbers.iloc[crossing_position])
             if crossing_position is not None
             else np.nan
+        )
+        (
+            eol_boundary_quality,
+            eol_distance_from_regime_start,
+            eol_distance_to_regime_end,
+        ) = eol_boundary_quality_for_group(
+            eol_observed=eol_observed,
+            eol_observation_number=eol_observation_number,
+            first_observation_number=first_observation_number,
+            last_observation_number=last_observation_number,
+            boundary_exclusion_observations=protocol_boundary_exclusion_observations,
+        )
+        trainable_label, trainable_label_quality = trainable_label_quality_for_group(
+            label_quality=quality,
+            protocol_assignment_quality=protocol_assignment_quality,
+            eol_boundary_quality=eol_boundary_quality,
         )
         lower_bound = (last_observation_number - observation_numbers).clip(lower=0)
         rul = (
@@ -215,6 +295,13 @@ def build_labels_for_feature_group(
                 "event_observed": eol_observed,
                 "duration_observations": duration,
                 "label_quality": quality,
+                "protocol_assignment_quality": protocol_assignment_quality,
+                "eol_boundary_quality": eol_boundary_quality,
+                "eol_distance_from_regime_start": eol_distance_from_regime_start,
+                "eol_distance_to_regime_end": eol_distance_to_regime_end,
+                "protocol_boundary_exclusion_observations": protocol_boundary_exclusion_observations,
+                "trainable_label": trainable_label,
+                "trainable_label_quality": trainable_label_quality,
             }
         )
         labels_by_threshold.append(label_frame)
@@ -243,6 +330,12 @@ def build_labels_for_feature_group(
                     else 0
                 ),
                 label_quality=quality,
+                protocol_assignment_quality=protocol_assignment_quality,
+                eol_boundary_quality=eol_boundary_quality,
+                eol_distance_from_regime_start=eol_distance_from_regime_start,
+                eol_distance_to_regime_end=eol_distance_to_regime_end,
+                trainable_label=trainable_label,
+                trainable_label_quality=trainable_label_quality,
             )
         )
     return pd.concat(labels_by_threshold, ignore_index=True), summaries
@@ -259,6 +352,7 @@ def build_labels_from_feature_table(
     consecutive_eol_observations: int,
     minimum_valid_capacity_ah: float,
     minimum_observations_for_training: int = 3,
+    protocol_boundary_exclusion_observations: int = DEFAULT_PROTOCOL_BOUNDARY_EXCLUSION_OBSERVATIONS,
 ) -> tuple[pd.DataFrame, list[LabelBuildSummary]]:
     if frame.empty:
         return pd.DataFrame(), []
@@ -285,6 +379,7 @@ def build_labels_from_feature_table(
             consecutive_eol_observations=consecutive_eol_observations,
             minimum_valid_capacity_ah=minimum_valid_capacity_ah,
             minimum_observations_for_training=minimum_observations_for_training,
+            protocol_boundary_exclusion_observations=protocol_boundary_exclusion_observations,
         )
         all_labels.append(labels)
         all_summaries.extend(summaries)
@@ -322,6 +417,7 @@ def build_external_health_labels(
     rpt_capacity_column: str,
     source_mode: str = "sample",
     minimum_observations_for_training: int = 50,
+    protocol_boundary_exclusion_observations: int = DEFAULT_PROTOCOL_BOUNDARY_EXCLUSION_OBSERVATIONS,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     suffix = "_sample" if source_mode == "sample" else ""
     jobs = [
@@ -357,6 +453,7 @@ def build_external_health_labels(
             consecutive_eol_observations=consecutive_eol_observations,
             minimum_valid_capacity_ah=minimum_valid_capacity_ah,
             minimum_observations_for_training=minimum_observations_for_training,
+            protocol_boundary_exclusion_observations=protocol_boundary_exclusion_observations,
         )
         all_labels.append(labels)
         all_summaries.extend(summaries)
@@ -375,6 +472,7 @@ def build_external_health_labels(
             "consecutive_eol_observations": consecutive_eol_observations,
             "minimum_valid_capacity_ah": minimum_valid_capacity_ah,
             "minimum_observations_for_training": minimum_observations_for_training,
+            "protocol_boundary_exclusion_observations": protocol_boundary_exclusion_observations,
             "cycle_capacity_column": cycle_capacity_column,
             "rpt_capacity_column": rpt_capacity_column,
             "summaries": [asdict(summary) for summary in all_summaries],
@@ -412,6 +510,12 @@ def parse_args() -> argparse.Namespace:
         default=50,
         help="Groups below this count are marked as limited-window labels.",
     )
+    parser.add_argument(
+        "--protocol-boundary-exclusion-observations",
+        type=int,
+        default=DEFAULT_PROTOCOL_BOUNDARY_EXCLUSION_OBSERVATIONS,
+        help="Observed EOL crossings this close to a protocol regime start or end are not trainable.",
+    )
     parser.add_argument("--cycle-capacity-column", default="capacity_delta_ah")
     parser.add_argument("--rpt-capacity-column", default="capacity_delta_ah")
     parser.add_argument(
@@ -428,7 +532,11 @@ def main() -> None:
     thresholds = sorted(set(args.eol_thresholds))
     if any(threshold <= 0 or threshold >= 1 for threshold in thresholds):
         raise ValueError("EOL thresholds must be between 0 and 1.")
-    if args.initial_capacity_window < 1 or args.consecutive_eol_observations < 1:
+    if (
+        args.initial_capacity_window < 1
+        or args.consecutive_eol_observations < 1
+        or args.protocol_boundary_exclusion_observations < 0
+    ):
         raise ValueError("Window and consecutive observation arguments must be positive.")
     labels, summary = build_external_health_labels(
         input_root=args.input_root,
@@ -441,6 +549,7 @@ def main() -> None:
         rpt_capacity_column=args.rpt_capacity_column,
         source_mode=args.source_mode,
         minimum_observations_for_training=args.minimum_observations_for_training,
+        protocol_boundary_exclusion_observations=args.protocol_boundary_exclusion_observations,
     )
     suffix = "_sample" if args.source_mode == "sample" else ""
     print(

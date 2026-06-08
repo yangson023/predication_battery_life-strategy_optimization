@@ -142,6 +142,139 @@ class ExternalHealthLabelTests(unittest.TestCase):
         self.assertIn("1", summary[0].group_id)
         self.assertIn("2", summary[1].group_id)
 
+    def test_cycle_eol_far_from_protocol_boundary_is_trainable(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "dataset_id": ["unit"] * 20,
+                "cell_id": ["G1C1"] * 20,
+                "source_archive_name": ["unit.zip"] * 20,
+                "protocol_regime_index": [2] * 20,
+                "cycle_index": list(range(1, 21)),
+                "capacity_delta_ah": [
+                    2.0,
+                    1.95,
+                    1.9,
+                    1.85,
+                    1.8,
+                    1.75,
+                    1.7,
+                    1.65,
+                    1.6,
+                    1.55,
+                    1.5,
+                    1.45,
+                    1.4,
+                    1.35,
+                    1.3,
+                    1.25,
+                    1.2,
+                    1.15,
+                    1.1,
+                    1.05,
+                ],
+            }
+        )
+
+        labels, summary = build_labels_from_feature_table(
+            frame=frame,
+            source_table="cycle_features.csv",
+            label_key_prefix="capacity",
+            observation_column="cycle_index",
+            capacity_column="capacity_delta_ah",
+            thresholds=[0.8],
+            initial_capacity_window=1,
+            consecutive_eol_observations=1,
+            minimum_valid_capacity_ah=1e-6,
+            minimum_observations_for_training=20,
+            protocol_boundary_exclusion_observations=5,
+        )
+
+        self.assertTrue(labels["trainable_label"].all())
+        self.assertEqual(summary[0].eol_boundary_quality, "away_from_protocol_boundary")
+        self.assertTrue(summary[0].trainable_label)
+        self.assertEqual(summary[0].trainable_label_quality, "trainable_observed_protocol_consistent")
+
+    def test_cycle_eol_near_protocol_boundary_is_not_trainable(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "dataset_id": ["unit"] * 20,
+                "cell_id": ["G1C1"] * 20,
+                "source_archive_name": ["unit.zip"] * 20,
+                "protocol_regime_index": [2] * 20,
+                "cycle_index": list(range(1, 21)),
+                "capacity_delta_ah": [
+                    2.0,
+                    1.95,
+                    1.9,
+                    1.85,
+                    1.8,
+                    1.75,
+                    1.7,
+                    1.65,
+                    1.6,
+                    1.55,
+                    1.5,
+                    1.45,
+                    1.4,
+                    1.35,
+                    1.3,
+                    1.25,
+                    1.1,
+                    1.0,
+                    0.9,
+                    0.8,
+                ],
+            }
+        )
+
+        labels, summary = build_labels_from_feature_table(
+            frame=frame,
+            source_table="cycle_features.csv",
+            label_key_prefix="capacity",
+            observation_column="cycle_index",
+            capacity_column="capacity_delta_ah",
+            thresholds=[0.6],
+            initial_capacity_window=1,
+            consecutive_eol_observations=1,
+            minimum_valid_capacity_ah=1e-6,
+            minimum_observations_for_training=20,
+            protocol_boundary_exclusion_observations=5,
+        )
+
+        self.assertFalse(labels["trainable_label"].any())
+        self.assertEqual(summary[0].eol_boundary_quality, "unreliable_boundary_crossing")
+        self.assertFalse(summary[0].trainable_label)
+        self.assertEqual(summary[0].trainable_label_quality, "excluded_unreliable_boundary_crossing")
+
+    def test_rpt_labels_are_excluded_without_protocol_assignment(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "dataset_id": ["unit"] * 20,
+                "cell_id": ["G1C1"] * 20,
+                "source_archive_name": ["unit.zip"] * 20,
+                "diagnostic_part": list(range(20)),
+                "capacity_delta_ah": [2.0 - index * 0.05 for index in range(20)],
+            }
+        )
+
+        labels, summary = build_labels_from_feature_table(
+            frame=frame,
+            source_table="rpt_features.csv",
+            label_key_prefix="rpt_capacity",
+            observation_column="diagnostic_part",
+            capacity_column="capacity_delta_ah",
+            thresholds=[0.8],
+            initial_capacity_window=1,
+            consecutive_eol_observations=1,
+            minimum_valid_capacity_ah=1e-6,
+            minimum_observations_for_training=20,
+        )
+
+        self.assertEqual(labels["label_quality"].unique().tolist(), ["usable"])
+        self.assertEqual(labels["protocol_assignment_quality"].unique().tolist(), ["unknown_or_unmapped"])
+        self.assertFalse(labels["trainable_label"].any())
+        self.assertEqual(summary[0].trainable_label_quality, "excluded_unknown_or_unmapped")
+
     def test_invalid_initial_capacity_is_marked(self) -> None:
         frame = pd.DataFrame(
             {
