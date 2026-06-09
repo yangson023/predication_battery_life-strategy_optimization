@@ -53,3 +53,40 @@ for example:
 ```text
 models/rul_prediction/nasa_li_ion_baseline/capacity_eol_80/
 ```
+
+## External Exploratory LOCO Binary Baseline
+
+`modules/rul_prediction/external_loco_binary_baseline.py` runs the first
+guarded external-data baseline from the baseline-ready export:
+
+```text
+outputs/label_audit/external_trainable_labels/baseline_ready_high_minobs20
+```
+
+This baseline is intentionally narrow:
+
+- `high_minobs20` only.
+- Cycle-only features only.
+- `capacity_eol_75` and `capacity_eol_80` only.
+- Leave-one-cell-out validation only.
+- Targets are read only from `baseline_ready_targets.csv`.
+- Feature rows must not contain `capacity_delta_ah`, `capacity_ah_*`,
+  `protocol_*`, `sample_rows`, `target_threshold_crossed`, or
+  `cycles_to_eol_at_row`.
+
+Run:
+
+```powershell
+python modules\rul_prediction\external_loco_binary_baseline.py
+```
+
+Outputs are written under:
+
+```text
+models/rul_prediction/external_loco_binary_baseline/
+```
+
+The output files are workflow diagnostics for an exploratory qualitative
+baseline. They must not be reported as validated model performance. Do not
+report RMSE, R-squared, AUC-ROC, random row split metrics, or formal
+cross-batch generalization claims from this experiment.
