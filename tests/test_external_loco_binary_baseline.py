@@ -44,6 +44,7 @@ def write_baseline_ready_inputs(root: Path) -> None:
             for cycle in range(1, eol_cycle + 1):
                 keys = {
                     "dataset_split_name": "high_minobs20",
+                    "source_dataset_split_name": "unit_source",
                     "cell_id": cell_id,
                     "batch_id": f"batch_{cell_id}",
                     "part_id": "part_1",
@@ -107,6 +108,7 @@ class ExternalLocoBinaryBaselineTests(unittest.TestCase):
             self.assertIn("target_threshold_crossed", model_frame.columns)
             self.assertNotIn("target_threshold_crossed", features.columns)
             self.assertEqual(len(model_frame), len(features))
+            self.assertNotIn("source_dataset_split_name", feature_columns(features))
 
     def test_run_outputs_loco_fold_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

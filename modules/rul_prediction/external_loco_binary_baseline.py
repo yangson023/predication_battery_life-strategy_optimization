@@ -18,7 +18,8 @@ DEFAULT_INPUT_ROOT = Path(
 DEFAULT_OUTPUT_ROOT = Path("models/rul_prediction/external_loco_binary_baseline")
 ALLOWED_LABEL_KEYS = ["capacity_eol_75", "capacity_eol_80"]
 JOIN_KEYS = ["dataset_split_name", "cell_id", "batch_id", "part_id", "label_key", "cycle_index"]
-METADATA_COLUMNS = set(JOIN_KEYS)
+METADATA_COLUMNS = {*JOIN_KEYS, "source_dataset_split_name"}
+ALLOWED_DATASET_SPLITS = {"high_minobs20", "combined_main"}
 FORBIDDEN_FEATURE_PATTERNS = [
     "capacity_delta_ah",
     "capacity_ah_",
@@ -26,6 +27,7 @@ FORBIDDEN_FEATURE_PATTERNS = [
     "sample_rows",
     "target_threshold_crossed",
     "cycles_to_eol_at_row",
+    "cycle_index_numeric",
     "SOH",
     "RUL",
 ]
@@ -100,8 +102,12 @@ def validate_inputs(features: pd.DataFrame, targets: pd.DataFrame, labels: pd.Da
     if missing_targets:
         raise ValueError(f"targets missing required columns: {missing_targets}")
 
-    if set(features["dataset_split_name"].dropna().unique()) != {"high_minobs20"}:
-        raise ValueError("Only high_minobs20 is allowed in the exploratory baseline.")
+    feature_splits = set(features["dataset_split_name"].dropna().unique())
+    if len(feature_splits) != 1 or not feature_splits.issubset(ALLOWED_DATASET_SPLITS):
+        raise ValueError(
+            f"Only these dataset splits are allowed: {sorted(ALLOWED_DATASET_SPLITS)}. "
+            f"Found: {sorted(feature_splits)}"
+        )
     if not set(features["label_key"].dropna().unique()).issubset(set(ALLOWED_LABEL_KEYS)):
         raise ValueError("Feature rows contain label keys outside capacity_eol_75/80.")
     if not set(labels["source_table"].dropna().unique()).issubset({"cycle_features.csv"}):
@@ -405,7 +411,7 @@ def write_outputs(
     report = {
         "experiment_type": "exploratory_qualitative_loco_binary_baseline",
         "is_formal_model_performance": False,
-        "input_dataset_split": "high_minobs20",
+        "input_dataset_split": manifest.get("dataset_split", ""),
         "label_keys": ALLOWED_LABEL_KEYS,
         "validation_strategy": "leave_one_cell_out",
         "feature_columns": columns,

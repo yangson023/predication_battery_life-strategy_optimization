@@ -122,3 +122,55 @@ python modules\rul_prediction\external_loco_binary_diagnostics.py
 The diagnostics should be used to decide whether failures are driven by data
 scarcity, cell-to-cell variability, feature instability, or batch confounding.
 They do not justify switching to a stronger model by themselves.
+
+## Combined Main Exploratory Input
+
+`modules/rul_prediction/export_combined_external_baseline_dataset.py` builds a
+controlled supplemental input named `combined_main`. It combines observed,
+protocol-regime-2, cycle-only labels from:
+
+- `six_minobs20`
+- `high_minobs20`
+
+The export keeps `source_dataset_split_name` as audit metadata so downstream
+reports can trace whether each row came from the six-cell or high-observation
+pipeline run. This metadata must not be used as a model feature.
+
+Run:
+
+```powershell
+python modules\rul_prediction\export_combined_external_baseline_dataset.py
+```
+
+The combined input is written to:
+
+```text
+models/rul_prediction/external_loco_binary_baseline/combined_main_input/
+```
+
+Then run the same exploratory LOCO baseline and diagnostics against the combined
+input:
+
+```powershell
+python modules\rul_prediction\external_loco_binary_baseline.py `
+  --input-root models\rul_prediction\external_loco_binary_baseline\combined_main_input `
+  --output-root models\rul_prediction\external_loco_binary_baseline\combined_main
+
+python modules\rul_prediction\external_loco_binary_diagnostics.py `
+  --baseline-root models\rul_prediction\external_loco_binary_baseline\combined_main `
+  --baseline-ready-root models\rul_prediction\external_loco_binary_baseline\combined_main_input `
+  --output-root models\rul_prediction\external_loco_binary_baseline\combined_main\diagnostics
+```
+
+Current combined-main audit:
+
+- 10 observed labels, not 11: `capacity_eol_75` has 4 labels and
+  `capacity_eol_80` has 6 labels.
+- 6 cells.
+- 304 feature/target rows.
+- Alignment passes.
+- Training positives improve to 3 per EOL_75 fold and 5 per EOL_80 fold.
+
+This combined input is still exploratory. It reduces the zero-signal
+single-positive problem but introduces inter-run confound risk because the rows
+come from two pipeline runs.
