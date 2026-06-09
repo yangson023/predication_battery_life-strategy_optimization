@@ -130,7 +130,8 @@ Key files are:
 | File | Purpose |
 | --- | --- |
 | `baseline_ready_labels.csv` | Guarded label rows selected for the exploratory main dataset |
-| `baseline_ready_feature_rows.csv` | Cycle rows aligned to the selected labels, with leakage-prone feature columns removed |
+| `baseline_ready_feature_rows.csv` | Cycle rows aligned to the selected labels, with leakage-prone feature, target, protocol-helper, and acquisition-artifact columns removed |
+| `baseline_ready_targets.csv` | Per-cycle exploratory targets kept separate from the model feature matrix |
 | `alignment_check.csv` | Per-label checks for matched cycle rows, positive target rows, and duplicate feature keys |
 | `features_columns.txt` | Model feature column list after leakage removal |
 | `removed_feature_columns.csv` | Columns removed because they are direct target/capacity or protocol-helper fields |

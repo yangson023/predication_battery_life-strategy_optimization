@@ -41,11 +41,21 @@ MODEL_METADATA_COLUMNS = [
     "part_id",
     "label_key",
     "cycle_index",
+]
+
+TARGET_COLUMNS = [
+    "dataset_split_name",
+    "cell_id",
+    "batch_id",
+    "part_id",
+    "label_key",
+    "cycle_index",
     "target_threshold_crossed",
     "cycles_to_eol_at_row",
 ]
 
 EXACT_LEAKAGE_COLUMNS = {
+    "sample_rows",
     "capacity",
     "capacity_delta_ah",
     "capacity_retention",
@@ -93,6 +103,8 @@ def is_trainable_quality(value: object) -> bool:
 
 def leakage_reason(column: str) -> str:
     if column in EXACT_LEAKAGE_COLUMNS:
+        if column == "sample_rows":
+            return "acquisition_artifact_column"
         return "explicit_leakage_or_target_column"
     lower = column.lower()
     if lower.startswith("protocol_"):
@@ -178,8 +190,9 @@ def build_feature_rows(
     selected_labels: pd.DataFrame,
     cycle_features: pd.DataFrame,
     feature_columns: list[str],
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     feature_rows = []
+    target_rows = []
     alignment_rows = []
     features = cycle_features.copy()
     features["protocol_regime_normalized"] = features["protocol_regime_index"].map(normalize_protocol)
@@ -206,8 +219,8 @@ def build_feature_rows(
             matched["target_threshold_crossed"] = matched["cycle_index_numeric"].eq(eol_cycle)
             matched["cycles_to_eol_at_row"] = eol_cycle - matched["cycle_index_numeric"]
             positive_rows = int(matched["target_threshold_crossed"].sum())
-            columns = MODEL_METADATA_COLUMNS + feature_columns
-            feature_rows.append(matched[columns])
+            feature_rows.append(matched[MODEL_METADATA_COLUMNS + feature_columns])
+            target_rows.append(matched[TARGET_COLUMNS])
         alignment_rows.append(
             {
                 "dataset_split_name": label["dataset_split_name"],
@@ -233,7 +246,11 @@ def build_feature_rows(
         feature_output = pd.concat(feature_rows, ignore_index=True)
     else:
         feature_output = pd.DataFrame(columns=MODEL_METADATA_COLUMNS + feature_columns)
-    return feature_output, pd.DataFrame(alignment_rows)
+    if target_rows:
+        target_output = pd.concat(target_rows, ignore_index=True)
+    else:
+        target_output = pd.DataFrame(columns=TARGET_COLUMNS)
+    return feature_output, target_output, pd.DataFrame(alignment_rows)
 
 
 def value_counts_records(frame: pd.DataFrame, columns: list[str]) -> list[dict[str, object]]:
@@ -336,7 +353,9 @@ def export_baseline_ready_dataset(
     cycle_features = read_cycle_features(feature_root)
     selected_labels, rejected_trainable = select_baseline_labels(trainable, dataset_split, allowed)
     feature_columns, removed_columns = split_feature_columns(cycle_features.columns.tolist())
-    feature_rows, alignment = build_feature_rows(selected_labels, cycle_features, feature_columns)
+    feature_rows, target_rows, alignment = build_feature_rows(
+        selected_labels, cycle_features, feature_columns
+    )
 
     missing_label_columns = [column for column in LABEL_COLUMNS if column not in selected_labels.columns]
     for column in missing_label_columns:
@@ -348,6 +367,7 @@ def export_baseline_ready_dataset(
     output_root.mkdir(parents=True, exist_ok=True)
     write_csv(baseline_labels, output_root / "baseline_ready_labels.csv")
     write_csv(feature_rows, output_root / "baseline_ready_feature_rows.csv")
+    write_csv(target_rows, output_root / "baseline_ready_targets.csv")
     write_csv(rejected_trainable, output_root / "rejected_trainable_labels.csv")
     write_csv(label_counts, output_root / "label_counts_per_cell.csv")
     write_csv(feature_stats, output_root / "feature_statistics_per_batch.csv")
@@ -374,6 +394,7 @@ def export_baseline_ready_dataset(
         },
         "exported_label_count": int(len(baseline_labels)),
         "exported_feature_row_count": int(len(feature_rows)),
+        "exported_target_row_count": int(len(target_rows)),
         "cell_count": int(baseline_labels["cell_id"].nunique()) if not baseline_labels.empty else 0,
         "labels_by_key": value_counts_records(baseline_labels, ["label_key"]),
         "labels_by_cell": value_counts_records(baseline_labels, ["cell_id"]),
