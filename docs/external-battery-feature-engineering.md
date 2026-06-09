@@ -115,6 +115,33 @@ exports trainable cycle-only labels, excluded labels, a label coverage matrix,
 and a JSON/Markdown report under `outputs/label_audit/external_trainable_labels`.
 This audit is a data-readiness artifact, not a model-performance result.
 
+After the audit passes, run
+`modules/feature_engineering/export_baseline_ready_external_labels.py` to build a
+guarded exploratory dataset export. The current main export uses only
+`high_minobs20`, `cycle_features.csv`, observed `capacity_eol_75` and
+`capacity_eol_80` labels in protocol regime 2. It excludes RPT labels, censored
+labels, protocol-boundary labels, direct capacity columns, and protocol helper
+columns from the model feature matrix.
+
+The export writes
+`outputs/label_audit/external_trainable_labels/baseline_ready_high_minobs20`.
+Key files are:
+
+| File | Purpose |
+| --- | --- |
+| `baseline_ready_labels.csv` | Guarded label rows selected for the exploratory main dataset |
+| `baseline_ready_feature_rows.csv` | Cycle rows aligned to the selected labels, with leakage-prone feature columns removed |
+| `alignment_check.csv` | Per-label checks for matched cycle rows, positive target rows, and duplicate feature keys |
+| `features_columns.txt` | Model feature column list after leakage removal |
+| `removed_feature_columns.csv` | Columns removed because they are direct target/capacity or protocol-helper fields |
+| `feature_statistics_per_batch.csv` | Batch/part feature summaries for batch-effect inspection |
+| `baseline_ready_dataset_report.json` | Machine-readable export summary |
+| `baseline_ready_dataset_report.md` | Human-readable export summary |
+| `dataset_manifest.json` | Reproducibility manifest for the export |
+
+This export is still not a training result. It is a gate that must pass before
+switching to `codex/rul-prediction`.
+
 ## Command
 
 ```powershell
@@ -144,6 +171,12 @@ Run the data extraction step first if sample inputs are missing:
 
 ```powershell
 & "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\data_pipeline\extract_external_battery_tables.py
+```
+
+Export the guarded high-observation exploratory dataset:
+
+```powershell
+& "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\feature_engineering\export_baseline_ready_external_labels.py
 ```
 
 ## Next Step
