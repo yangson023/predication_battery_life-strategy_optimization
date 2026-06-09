@@ -174,3 +174,50 @@ Current combined-main audit:
 This combined input is still exploratory. It reduces the zero-signal
 single-positive problem but introduces inter-run confound risk because the rows
 come from two pipeline runs.
+
+## Feature Exclusion Diagnostics
+
+`modules/rul_prediction/external_loco_feature_exclusion_diagnostics.py` compares
+single-feature exclusions against the `combined_main` full-feature control. It
+does not train a new model family; it reruns the same exploratory logistic LOCO
+workflow with one candidate risk feature removed at a time.
+
+Current candidate features:
+
+- `current_a_last`
+- `energy_wh_last`
+- `current_a_mean`
+
+Run:
+
+```powershell
+python modules\rul_prediction\external_loco_feature_exclusion_diagnostics.py
+```
+
+Outputs are written to:
+
+```text
+models/rul_prediction/external_loco_binary_baseline/combined_main/feature_exclusion_diagnostics/
+```
+
+Key files:
+
+| File | Purpose |
+| --- | --- |
+| `feature_exclusion_fold_summary.csv` | Fold-level results for full features and each single-feature exclusion |
+| `feature_exclusion_timing_error.csv` | Per-cell timing classes for each experiment |
+| `feature_exclusion_threshold_sensitivity.csv` | Threshold 0.5 and 0.7 sensitivity for each experiment |
+| `feature_exclusion_comparison.csv` | Fold-by-fold comparison against the full-feature control |
+| `feature_exclusion_decisions.csv` | Rule-based diagnostic decision for each excluded feature |
+| `feature_exclusion_report.json` | Machine-readable summary |
+| `feature_exclusion_report.md` | Human-readable summary |
+
+Decision rules are intentionally conservative. A feature is only marked as a
+`possible_confound_feature` when at least three folds reduce false positives
+without increasing false negatives, or at least three folds improve absolute
+timing error. If any fold increases false negatives, the exclusion is marked
+`exclusion_harms_detection`.
+
+These diagnostics do not permit Random Forest, XGBoost, SVM, MLP, or RUL
+regression. They only decide whether a single risk feature should be considered
+for exclusion in the next exploratory baseline input.
