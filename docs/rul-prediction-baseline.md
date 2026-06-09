@@ -90,3 +90,35 @@ The output files are workflow diagnostics for an exploratory qualitative
 baseline. They must not be reported as validated model performance. Do not
 report RMSE, R-squared, AUC-ROC, random row split metrics, or formal
 cross-batch generalization claims from this experiment.
+
+## External Baseline Diagnostics
+
+`modules/rul_prediction/external_loco_binary_diagnostics.py` diagnoses the
+exploratory LOCO binary baseline without training a new model. It reads the
+existing baseline outputs and writes:
+
+```text
+models/rul_prediction/external_loco_binary_baseline/diagnostics/
+```
+
+Key outputs:
+
+| File | Purpose |
+| --- | --- |
+| `threshold_sensitivity.csv` | Recomputes row-level decisions at probability thresholds 0.3, 0.5, and 0.7 |
+| `per_cell_probability_trajectory.csv` | Per-cycle probability trajectory with true EOL and first predicted positive cycle |
+| `prediction_timing_error.csv` | Per cell/threshold timing class: early false positive, missed EOL, late detection, or exact hit |
+| `false_positive_false_negative_audit.csv` | Row-level audit of false positives, missed EOL rows, and exact hits |
+| `batch_feature_risk_summary.csv` | Batch/part mean shifts for the current feature columns |
+| `external_loco_diagnostics_report.json` | Machine-readable diagnostic summary |
+| `external_loco_diagnostics_report.md` | Human-readable diagnostic summary |
+
+Run:
+
+```powershell
+python modules\rul_prediction\external_loco_binary_diagnostics.py
+```
+
+The diagnostics should be used to decide whether failures are driven by data
+scarcity, cell-to-cell variability, feature instability, or batch confounding.
+They do not justify switching to a stronger model by themselves.
