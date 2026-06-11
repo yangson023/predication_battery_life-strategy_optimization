@@ -117,6 +117,26 @@ def split_feature_columns(columns: list[str]) -> tuple[list[str], pd.DataFrame]:
     return feature_columns, pd.DataFrame(removed)
 
 
+def apply_requested_feature_exclusions(
+    feature_columns: list[str],
+    removed_columns: pd.DataFrame,
+    exclude_features: list[str],
+) -> tuple[list[str], pd.DataFrame]:
+    missing = sorted(set(exclude_features) - set(feature_columns))
+    if missing:
+        raise ValueError(f"Requested feature exclusions are not exportable features: {missing}")
+    remaining = [column for column in feature_columns if column not in set(exclude_features)]
+    extra_removed = pd.DataFrame(
+        [
+            {"column": column, "reason": "requested_supplemental_exclusion"}
+            for column in exclude_features
+        ]
+    )
+    if extra_removed.empty:
+        return remaining, removed_columns
+    return remaining, pd.concat([removed_columns, extra_removed], ignore_index=True)
+
+
 def load_trainable_labels(audit_root: Path) -> pd.DataFrame:
     path = audit_root / "trainable_label_summary.csv"
     if not path.exists():
@@ -252,6 +272,7 @@ def build_report(
     targets: pd.DataFrame,
     alignment: pd.DataFrame,
     feature_columns: list[str],
+    exclude_features: list[str],
 ) -> dict[str, object]:
     return {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -284,6 +305,7 @@ def build_report(
             else "fail"
         ),
         "feature_column_count": len(feature_columns),
+        "requested_excluded_features": exclude_features,
         "interpretation_limits": [
             "combined from six_minobs20 and high_minobs20 pipeline runs",
             "potential inter-run confound is not fully controlled",
@@ -342,12 +364,19 @@ def export_combined_external_baseline_dataset(
     audit_root: Path = DEFAULT_AUDIT_ROOT,
     output_root: Path = DEFAULT_OUTPUT_ROOT,
     source_feature_roots: dict[str, Path] | None = None,
+    exclude_features: list[str] | None = None,
 ) -> dict[str, object]:
     source_feature_roots = source_feature_roots or SOURCE_FEATURE_ROOTS
+    exclude_features = exclude_features or []
     labels = load_trainable_labels(audit_root)
     source_features = load_source_features(source_feature_roots)
     reference_columns = source_features["high_minobs20"].columns.tolist()
     feature_columns, removed_columns = split_feature_columns(reference_columns)
+    feature_columns, removed_columns = apply_requested_feature_exclusions(
+        feature_columns,
+        removed_columns,
+        exclude_features,
+    )
     feature_rows, targets, alignment = build_feature_and_target_rows(
         labels, source_features, feature_columns
     )
@@ -367,7 +396,14 @@ def export_combined_external_baseline_dataset(
     )
     (output_root / "features_columns.txt").write_text("\n".join(feature_columns) + "\n", encoding="utf-8")
 
-    report = build_report(labels, feature_rows, targets, alignment, feature_columns)
+    report = build_report(
+        labels,
+        feature_rows,
+        targets,
+        alignment,
+        feature_columns,
+        exclude_features,
+    )
     (output_root / "dataset_manifest.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -389,6 +425,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--audit-root", type=Path, default=DEFAULT_AUDIT_ROOT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument(
+        "--exclude-feature",
+        action="append",
+        default=[],
+        help="Feature to remove from the exported feature rows. Repeat for multiple exclusions.",
+    )
     return parser.parse_args()
 
 
@@ -397,6 +439,7 @@ def main() -> None:
     report = export_combined_external_baseline_dataset(
         audit_root=args.audit_root,
         output_root=args.output_root,
+        exclude_features=args.exclude_feature,
     )
     print(
         "combined external baseline input exported: "

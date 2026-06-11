@@ -134,6 +134,31 @@ class CombinedExternalBaselineExportTests(unittest.TestCase):
             self.assertIn("cycle_index_numeric", removed["column"].tolist())
             self.assertEqual(report["alignment_status"], "pass")
 
+    def test_requested_exclusion_removes_exportable_feature(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audit_root = root / "audit"
+            six_root = root / "six"
+            high_root = root / "high"
+            output_root = root / "out"
+            write_trainable_summary(audit_root)
+            write_cycle_features(six_root, "G1C2", "batch_2", "part_1", 4)
+            write_cycle_features(high_root, "G3C3", "batch_1", "part_1", 3)
+
+            report = export_combined_external_baseline_dataset(
+                audit_root=audit_root,
+                output_root=output_root,
+                source_feature_roots={"six_minobs20": six_root, "high_minobs20": high_root},
+                exclude_features=["energy_wh_last"],
+            )
+
+            features = pd.read_csv(output_root / "baseline_ready_feature_rows.csv")
+            removed = pd.read_csv(output_root / "removed_feature_columns.csv")
+
+            self.assertNotIn("energy_wh_last", features.columns)
+            self.assertIn("energy_wh_last", removed["column"].tolist())
+            self.assertEqual(report["requested_excluded_features"], ["energy_wh_last"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from modules.rul_prediction.external_loco_feature_exclusion_diagnostics import (
+    build_full_vs_feature_threshold_comparison,
     build_experiment_specs,
     build_markdown_report,
     build_report,
@@ -151,6 +152,64 @@ class ExternalLocoFeatureExclusionDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("formal performance", str(report).lower())
         self.assertNotIn("formal performance", markdown.lower())
 
+    def test_full_vs_feature_threshold_comparison_has_required_columns(self) -> None:
+        sensitivity = pd.DataFrame(
+            [
+                {
+                    "experiment_name": "full_features",
+                    "excluded_feature": "",
+                    "probability_threshold": 0.5,
+                    "label_key": "capacity_eol_80",
+                    "cell_id": "A",
+                    "false_positive_rows": 2,
+                    "false_negative_rows": 0,
+                    "precision_diagnostic": 0.33,
+                    "recall_diagnostic": 1.0,
+                    "first_predicted_positive_cycle": 8,
+                },
+                {
+                    "experiment_name": "drop_energy_wh_last",
+                    "excluded_feature": "energy_wh_last",
+                    "probability_threshold": 0.5,
+                    "label_key": "capacity_eol_80",
+                    "cell_id": "A",
+                    "false_positive_rows": 1,
+                    "false_negative_rows": 0,
+                    "precision_diagnostic": 0.5,
+                    "recall_diagnostic": 1.0,
+                    "first_predicted_positive_cycle": 9,
+                },
+            ]
+        )
+        timing = pd.DataFrame(
+            [
+                {
+                    "experiment_name": "full_features",
+                    "excluded_feature": "",
+                    "label_key": "capacity_eol_80",
+                    "cell_id": "A",
+                    "prediction_timing_error_cycles": -2,
+                    "timing_class": "early_false_positive",
+                },
+                {
+                    "experiment_name": "drop_energy_wh_last",
+                    "excluded_feature": "energy_wh_last",
+                    "label_key": "capacity_eol_80",
+                    "cell_id": "A",
+                    "prediction_timing_error_cycles": -1,
+                    "timing_class": "early_false_positive",
+                },
+            ]
+        )
+
+        comparison = build_full_vs_feature_threshold_comparison(sensitivity, timing)
+
+        self.assertEqual(len(comparison), 1)
+        self.assertIn("full_false_positive_rows", comparison.columns)
+        self.assertIn("drop_false_negative_rows", comparison.columns)
+        self.assertIn("full_timing_error", comparison.columns)
+        self.assertIn("drop_timing_error", comparison.columns)
+
     def test_run_writes_expected_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -170,6 +229,7 @@ class ExternalLocoFeatureExclusionDiagnosticsTests(unittest.TestCase):
             self.assertTrue((output_root / "feature_exclusion_timing_error.csv").exists())
             self.assertTrue((output_root / "feature_exclusion_threshold_sensitivity.csv").exists())
             self.assertTrue((output_root / "feature_exclusion_comparison.csv").exists())
+            self.assertTrue((output_root / "feature_exclusion_fold_comparison_full.csv").exists())
             self.assertTrue((output_root / "feature_exclusion_report.json").exists())
             self.assertTrue((output_root / "feature_exclusion_report.md").exists())
 

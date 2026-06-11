@@ -192,6 +192,85 @@ def classify_feature_effect(comparison: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_full_vs_feature_threshold_comparison(
+    threshold_sensitivity: pd.DataFrame,
+    timing: pd.DataFrame,
+    excluded_feature: str = "energy_wh_last",
+) -> pd.DataFrame:
+    full = threshold_sensitivity.loc[
+        threshold_sensitivity["experiment_name"].eq(EXPERIMENT_CONTROL)
+    ].copy()
+    drop = threshold_sensitivity.loc[
+        threshold_sensitivity["excluded_feature"].eq(excluded_feature)
+    ].copy()
+    keys = ["probability_threshold", "label_key", "cell_id"]
+    merged = full.merge(
+        drop,
+        on=keys,
+        suffixes=("_full", "_drop"),
+        how="inner",
+    )
+
+    timing_full = timing.loc[timing["experiment_name"].eq(EXPERIMENT_CONTROL)].copy()
+    timing_drop = timing.loc[timing["excluded_feature"].eq(excluded_feature)].copy()
+    timing_keys = ["label_key", "cell_id"]
+    timing_merged = timing_full.merge(
+        timing_drop,
+        on=timing_keys,
+        suffixes=("_full", "_drop"),
+        how="inner",
+    )
+    merged = merged.merge(
+        timing_merged[
+            timing_keys
+            + [
+                "prediction_timing_error_cycles_full",
+                "prediction_timing_error_cycles_drop",
+                "timing_class_full",
+                "timing_class_drop",
+            ]
+        ],
+        on=timing_keys,
+        how="left",
+    )
+
+    rows = []
+    for row in merged.to_dict("records"):
+        rows.append(
+            {
+                "probability_threshold": row["probability_threshold"],
+                "label_key": row["label_key"],
+                "cell_id": row["cell_id"],
+                "excluded_feature": excluded_feature,
+                "full_false_positive_rows": row["false_positive_rows_full"],
+                "drop_false_positive_rows": row["false_positive_rows_drop"],
+                "full_false_negative_rows": row["false_negative_rows_full"],
+                "drop_false_negative_rows": row["false_negative_rows_drop"],
+                "full_precision": row["precision_diagnostic_full"],
+                "drop_precision": row["precision_diagnostic_drop"],
+                "full_recall": row["recall_diagnostic_full"],
+                "drop_recall": row["recall_diagnostic_drop"],
+                "full_first_predicted_positive_cycle": row[
+                    "first_predicted_positive_cycle_full"
+                ],
+                "drop_first_predicted_positive_cycle": row[
+                    "first_predicted_positive_cycle_drop"
+                ],
+                "full_timing_error": row["prediction_timing_error_cycles_full"],
+                "drop_timing_error": row["prediction_timing_error_cycles_drop"],
+                "full_timing_class": row["timing_class_full"],
+                "drop_timing_class": row["timing_class_drop"],
+                "false_positive_delta_drop_minus_full": (
+                    row["false_positive_rows_drop"] - row["false_positive_rows_full"]
+                ),
+                "false_negative_delta_drop_minus_full": (
+                    row["false_negative_rows_drop"] - row["false_negative_rows_full"]
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def build_report(
     fold_summary: pd.DataFrame,
     comparison: pd.DataFrame,
@@ -283,6 +362,7 @@ def write_outputs(
     timing: pd.DataFrame,
     threshold_sensitivity: pd.DataFrame,
     comparison: pd.DataFrame,
+    full_vs_energy: pd.DataFrame,
     decisions: pd.DataFrame,
     report: dict[str, object],
 ) -> None:
@@ -293,6 +373,9 @@ def write_outputs(
         output_root / "feature_exclusion_threshold_sensitivity.csv", index=False
     )
     comparison.to_csv(output_root / "feature_exclusion_comparison.csv", index=False)
+    full_vs_energy.to_csv(
+        output_root / "feature_exclusion_fold_comparison_full.csv", index=False
+    )
     decisions.to_csv(output_root / "feature_exclusion_decisions.csv", index=False)
     (output_root / "feature_exclusion_report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2),
@@ -339,6 +422,11 @@ def run_feature_exclusion_diagnostics(
     timing_all = pd.concat(timing_tables, ignore_index=True)
     threshold_all = pd.concat(threshold_tables, ignore_index=True)
     comparison = compare_to_baseline(fold_summary_all, timing_all)
+    full_vs_energy = build_full_vs_feature_threshold_comparison(
+        threshold_all,
+        timing_all,
+        excluded_feature="energy_wh_last",
+    )
     decisions = classify_feature_effect(comparison)
     report = build_report(fold_summary_all, comparison, decisions, feature_cols)
     write_outputs(
@@ -347,6 +435,7 @@ def run_feature_exclusion_diagnostics(
         timing_all,
         threshold_all,
         comparison,
+        full_vs_energy,
         decisions,
         report,
     )

@@ -221,3 +221,42 @@ timing error. If any fold increases false negatives, the exclusion is marked
 These diagnostics do not permit Random Forest, XGBoost, SVM, MLP, or RUL
 regression. They only decide whether a single risk feature should be considered
 for exclusion in the next exploratory baseline input.
+
+The diagnostics also write `feature_exclusion_fold_comparison_full.csv`, a
+paper-facing evidence table that compares `full_features` and
+`drop_energy_wh_last` fold by fold at probability thresholds 0.5 and 0.7. This
+table is intended to show both gains and regressions; it should not be
+collapsed into a single average score.
+
+## Combined Main V2
+
+`combined_main_v2` is a supplemental export that removes `energy_wh_last` from
+the combined input feature matrix while keeping the same labels, targets, and
+leave-one-cell-out design. It is not a replacement for the full-feature
+combined-main baseline.
+
+Build the v2 input:
+
+```powershell
+python modules\rul_prediction\export_combined_external_baseline_dataset.py `
+  --output-root models\rul_prediction\external_loco_binary_baseline\combined_main_v2_input `
+  --exclude-feature energy_wh_last
+```
+
+Run the same exploratory baseline and diagnostics:
+
+```powershell
+python modules\rul_prediction\external_loco_binary_baseline.py `
+  --input-root models\rul_prediction\external_loco_binary_baseline\combined_main_v2_input `
+  --output-root models\rul_prediction\external_loco_binary_baseline\combined_main_v2
+
+python modules\rul_prediction\external_loco_binary_diagnostics.py `
+  --baseline-root models\rul_prediction\external_loco_binary_baseline\combined_main_v2 `
+  --baseline-ready-root models\rul_prediction\external_loco_binary_baseline\combined_main_v2_input `
+  --output-root models\rul_prediction\external_loco_binary_baseline\combined_main_v2\diagnostics
+```
+
+Interpretation rule: if v2 improves some folds but worsens a previously exact
+fold, report both outcomes. The correct scientific statement is that
+`energy_wh_last` may encode both degradation signal and batch-dependent offset;
+it is not proof that removing the feature improves the model.
