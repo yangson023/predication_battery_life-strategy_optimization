@@ -156,6 +156,19 @@ Build per-cell features after running the by-cell extractor:
 & "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\feature_engineering\build_external_battery_features.py --source-mode by_cell --input-root data\processed\external_battery_datasets\by_cell
 ```
 
+For very large per-cell CSV files, use the low-memory builder instead. This is
+the required path for Round 1c on the laptop because it reads each CSV with
+`chunksize` and accumulates per-cycle/per-RPT statistics without materializing a
+whole source file in memory:
+
+```powershell
+& "C:\Users\Lenovo\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" modules\feature_engineering\build_external_battery_features_low_memory.py --source-mode by_cell --input-root "D:\battery_archive\processed_cache\by_cell_expansion_round1c" --output-root data\features\external_battery_datasets_expansion_round1c --chunksize 250000
+```
+
+Do not run the Round 1c command until synthetic and tiny real-slice validation
+pass. The low-memory builder writes `feature_build_report.json` and
+`feature_schema_check.csv` for review before label generation.
+
 Then build preliminary external SOH/RUL labels:
 
 ```powershell
