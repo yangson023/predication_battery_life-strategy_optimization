@@ -75,6 +75,23 @@ def safe_max(values: Iterable[float]) -> float | str:
     return max(clean) if clean else ""
 
 
+def parse_duration_seconds(value: object) -> float | str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    parts = text.split(":")
+    try:
+        if len(parts) == 3:
+            hours, minutes, seconds = [float(part) for part in parts]
+            return hours * 3600.0 + minutes * 60.0 + seconds
+        if len(parts) == 2:
+            minutes, seconds = [float(part) for part in parts]
+            return minutes * 60.0 + seconds
+        return float(text)
+    except ValueError:
+        return ""
+
+
 def slope(values: list[float]) -> float | str:
     clean = [value for value in values if value is not None]
     if len(clean) < 2:
@@ -196,11 +213,15 @@ def step_features(step_rows: list[dict[str, str]]) -> dict[int, dict[str, object
         discharge_median = parse_float(discharge.get("discharge_median_voltage_v"))
         charge_end = parse_float(charge.get("end_voltage_v"))
         discharge_end = parse_float(discharge.get("end_voltage_v"))
+        charge_duration = parse_duration_seconds(charge.get("step_duration", ""))
+        discharge_duration = parse_duration_seconds(discharge.get("step_duration", ""))
         result[cycle] = {
             "charge_median_voltage_v": charge_median if charge_median is not None else "",
             "discharge_median_voltage_v": discharge_median if discharge_median is not None else "",
             "charge_end_voltage_v": charge_end if charge_end is not None else "",
             "discharge_end_voltage_v": discharge_end if discharge_end is not None else "",
+            "charge_step_duration_s": charge_duration,
+            "discharge_step_duration_s": discharge_duration,
             "voltage_hysteresis_v": (charge_median - discharge_median)
             if charge_median is not None and discharge_median is not None
             else "",
@@ -218,7 +239,9 @@ def build_licu_rows(
 ) -> list[dict[str, object]]:
     root = Path(manifest_row["selected_output_root"])
     cycle_rows = read_csv(root / "normalized_cycle.csv")
+    step_rows = read_csv(root / "normalized_step.csv")
     record_rows = read_csv(root / "normalized_record_sample.csv")
+    step_by_cycle = step_features(step_rows)
     record_by_cycle = record_features(record_rows)
     dataset = manifest_row["selected_dataset_name"]
     out_rows: list[dict[str, object]] = []
@@ -258,6 +281,7 @@ def build_licu_rows(
             "charge_capacity_mah": charge if charge is not None else "",
             "discharge_capacity_mah": discharge if discharge is not None else "",
             "coulombic_efficiency_percent": ce if ce is not None else "",
+            "cycle_median_voltage_v": row.get("median_voltage_v", ""),
             "capacity_retention_percent": row.get("capacity_retention_percent", ""),
             "ce_lag_1": ce_lag_1,
             "ce_rolling_mean_past_5": rolling_mean,
@@ -280,6 +304,7 @@ def build_licu_rows(
             "audit_warning_only": quality.get("audit_warning_only", "False"),
             "record_sample_limited": "True",
         }
+        feature_row.update(step_by_cycle.get(cycle, {}))
         feature_row.update(record_by_cycle.get(cycle, {}))
         out_rows.append(feature_row)
         usable = usable_past_ce(row)
@@ -378,6 +403,23 @@ def forbidden_columns(columns: Iterable[str]) -> list[str]:
     return found
 
 
+def non_empty_count(rows: list[dict[str, object]], column: str) -> int:
+    return sum(1 for row in rows if str(row.get(column, "")).strip() != "")
+
+
+def coverage_summary(rows: list[dict[str, object]], columns: list[str]) -> dict[str, dict[str, object]]:
+    summary: dict[str, dict[str, object]] = {}
+    total = len(rows)
+    for column in columns:
+        count = non_empty_count(rows, column)
+        summary[column] = {
+            "non_empty_count": count,
+            "total_rows": total,
+            "coverage_fraction": (count / total) if total else 0.0,
+        }
+    return summary
+
+
 def build_features(
     canonical_manifest: Path,
     cycle_quality_manifest: Path,
@@ -438,7 +480,16 @@ def build_features(
         "charge_capacity_mah",
         "discharge_capacity_mah",
         "coulombic_efficiency_percent",
+        "cycle_median_voltage_v",
         "capacity_retention_percent",
+        "charge_median_voltage_v",
+        "discharge_median_voltage_v",
+        "charge_end_voltage_v",
+        "discharge_end_voltage_v",
+        "charge_step_duration_s",
+        "discharge_step_duration_s",
+        "voltage_hysteresis_v",
+        "end_voltage_gap_v",
         "ce_lag_1",
         "ce_rolling_mean_past_5",
         "ce_rolling_std_past_5",
@@ -463,6 +514,15 @@ def build_features(
     write_csv(output_root / "licu_cycle_features.csv", licu_rows, licu_fields)
     lili_forbidden = forbidden_columns(lili_fields)
     licu_forbidden = forbidden_columns(licu_fields)
+    licu_enrichment_columns = [
+        "cycle_median_voltage_v",
+        "charge_median_voltage_v",
+        "discharge_median_voltage_v",
+        "charge_step_duration_s",
+        "discharge_step_duration_s",
+        "voltage_hysteresis_v",
+    ]
+    licu_enrichment_coverage = coverage_summary(licu_rows, licu_enrichment_columns)
     canonical_names = {row["selected_dataset_name"] for row in manifest}
     lili_names = {str(row["selected_dataset_name"]) for row in lili_rows}
     licu_names = {str(row["selected_dataset_name"]) for row in licu_rows}
@@ -493,6 +553,25 @@ def build_features(
             "detail": "CE and hysteresis rolling features are computed before appending current cycle to rolling history.",
         },
         {
+            "check_name": "licu_voltage_enrichment_fields_present",
+            "status": "pass" if all(column in licu_fields for column in licu_enrichment_columns) else "fail",
+            "detail": ";".join(licu_enrichment_columns),
+        },
+        {
+            "check_name": "licu_cycle_median_voltage_coverage",
+            "status": "pass"
+            if licu_enrichment_coverage["cycle_median_voltage_v"]["coverage_fraction"] >= 0.95
+            else "warn",
+            "detail": json.dumps(licu_enrichment_coverage["cycle_median_voltage_v"], ensure_ascii=False),
+        },
+        {
+            "check_name": "licu_step_voltage_hysteresis_coverage",
+            "status": "pass"
+            if licu_enrichment_coverage["voltage_hysteresis_v"]["coverage_fraction"] >= 0.90
+            else "warn",
+            "detail": json.dumps(licu_enrichment_coverage["voltage_hysteresis_v"], ensure_ascii=False),
+        },
+        {
             "check_name": "training_allowed_now",
             "status": "pass",
             "detail": "false for feature builder stage",
@@ -500,18 +579,21 @@ def build_features(
     ]
     write_csv(output_root / "feature_schema_check.csv", checks, ["check_name", "status", "detail"])
     report = {
-        "feature_build_date": "2026-06-18",
+        "feature_build_date": "2026-06-21",
         "lili_feature_rows": len(lili_rows),
         "licu_feature_rows": len(licu_rows),
         "per_cell_feature_rows": per_cell_counts,
         "missing_fields": missing_fields,
+        "licu_voltage_enrichment_coverage": licu_enrichment_coverage,
         "rolling_features_past_only": True,
         "forbidden_columns": lili_forbidden + licu_forbidden,
         "label_policy_design_allowed": not (lili_forbidden or licu_forbidden),
         "training_allowed_now": False,
+        "model_training_allowed": False,
         "notes": [
             "Li||Li and Li||Cu are written to separate feature tables.",
             "Record-derived features are sample-limited and should not be treated as full-record curve features.",
+            "Li||Cu cycle and step voltage features are preferred over sparse record_sample voltage features for near-term mechanism feature design.",
             "Li||Cu CE columns are label-proximal and require label-policy leakage controls before any training.",
         ],
     }
@@ -532,12 +614,26 @@ def build_features(
         f"- Forbidden columns: {report['forbidden_columns']}",
         f"- Label policy design allowed: {report['label_policy_design_allowed']}",
         "- Training allowed now: False",
+        "- Model training allowed: False",
         "",
-        "## Per-cell rows",
+        "## Li||Cu voltage enrichment coverage",
         "",
-        "| source folder | rows |",
-        "| --- | ---: |",
+        "| field | non-empty | total | coverage |",
+        "| --- | ---: | ---: | ---: |",
     ]
+    for field, stats in licu_enrichment_coverage.items():
+        md.append(
+            f"| {field} | {stats['non_empty_count']} | {stats['total_rows']} | {stats['coverage_fraction']:.3f} |"
+        )
+    md.extend(
+        [
+            "",
+            "## Per-cell rows",
+            "",
+            "| source folder | rows |",
+            "| --- | ---: |",
+        ]
+    )
     for cell, count in per_cell_counts.items():
         md.append(f"| {cell} | {count} |")
     md.extend(
