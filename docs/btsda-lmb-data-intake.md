@@ -12,6 +12,17 @@ raw export -> tiny validation -> small-batch intake -> feature schema -> label p
 
 本阶段只完成 `tiny validation`。禁止跳过门禁直接训练。
 
+### Current Cell Scope Tag
+
+当前已接入的 Li||Li 和 Li||Cu 数据必须额外标记：
+
+```text
+cell_scope = lmb_mechanism_test_not_full_cell
+is_full_cell = false
+```
+
+这表示它们是 LMB 相关机制测试数据，而不是 full-cell 数据。Li||Li 可用于极化、电压不稳定和 soft-short 审计；Li||Cu 可用于 CE、锂沉积/剥离效率和 incomplete-capacity warning proxy。它们不能被表述为全电池寿命、RUL 或完整 EOL 结论，也不能把 Li||Li 和 Li||Cu 混成一个训练任务。
+
 ## 三层结构
 
 | 层级 | 主要用途 | 当前处理方式 |

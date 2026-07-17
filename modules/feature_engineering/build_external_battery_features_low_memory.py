@@ -11,12 +11,16 @@ import argparse
 import json
 import math
 import shutil
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+if __package__ in {None, ""}:
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from modules.feature_engineering.build_external_battery_features import (
     GROUP_ID_COLUMNS,

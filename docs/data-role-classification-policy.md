@@ -12,6 +12,8 @@ method-development data.
 
 Every dataset, feature table, label table, audit report, and model input must be
 assigned a `dataset_role` before it is used for scientific interpretation.
+For LMB lab data, also assign a `cell_scope` so mechanism-test cells are not
+misreported as full-cell evidence.
 
 Allowed values:
 
@@ -24,6 +26,20 @@ unknown
 ```
 
 Only `true_lmb` data can support lithium metal battery research conclusions.
+However, `true_lmb` does not automatically mean full-cell data. Li||Li
+symmetric cells and Li||Cu half-cells are LMB-relevant mechanism-test cells, not
+full-cell lifetime/RUL/EOL evidence.
+
+Allowed `cell_scope` values:
+
+```text
+lmb_full_cell
+anode_free_full_cell
+lmb_mechanism_test_not_full_cell
+li_ion_method_cell
+diagnostic_only_scope
+unknown_scope
+```
 
 ## Role Definitions
 
@@ -35,6 +51,42 @@ Only `true_lmb` data can support lithium metal battery research conclusions.
 | `diagnostic_only` | RPT, EIS, thermal runaway, abuse, safety, or other diagnostic data that are useful for audit but not directly trainable yet | No by itself | No, unless protocol alignment and label policy are explicitly solved |
 | `unknown` | Data with unclear chemistry, cell design, protocol, or provenance | No | No |
 
+## Cell Scope Definitions
+
+| `cell_scope` | Definition | Allowed use | Forbidden use |
+| --- | --- | --- | --- |
+| `lmb_full_cell` | Full-cell LMB or anode-free full-cell data with documented cathode, anode or host design, electrolyte, protocol, and termination reason | Can support full-cell LMB lifetime questions after all gates pass | Training before metadata, label, censoring, and leakage gates pass |
+| `anode_free_full_cell` | Full-cell LMB subset with no initial lithium-metal anode reservoir, where lithium inventory comes from the cathode during formation | Can support anode-free lifetime and lithium-inventory questions after gates pass | Treating N/P ratio as ordinary lithium-excess full-cell metadata; training before anode-free-specific metadata and censoring review |
+| `lmb_mechanism_test_not_full_cell` | LMB-relevant Li||Li symmetric cells or Li||Cu half-cells used to study lithium plating/stripping, CE, polarization, voltage instability, or soft-short mechanisms | Mechanism audit, feature design, warning-proxy labels, parser/schema validation for lab LMB data | Claiming full-cell lifetime/RUL/EOL conclusions; mixing Li||Li and Li||Cu as one training task |
+| `li_ion_method_cell` | Conventional Li-ion cells used for method-development only | Pipeline validation and method rehearsal | LMB scientific conclusions |
+| `diagnostic_only_scope` | RPT/EIS/thermal/abuse/diagnostic records without trainable cycle alignment | Audit and safety/mechanism context | Direct label training before alignment |
+| `unknown_scope` | Scope is unclear or missing | Inventory and metadata recovery | Training or scientific claims |
+
+## Full-Cell Scope Promotion Conditions
+
+Data may be assigned `lmb_full_cell` only when all of the following are known
+or explicitly marked as unavailable:
+
+- cell ID and raw file provenance
+- full-cell design type, such as coin cell, pouch cell, or other documented
+  full-cell format
+- cathode type and cathode loading or areal capacity
+- anode type or anode-free status
+- N/P ratio for lithium-excess full cells, or explicit anode-free flag when
+  N/P ratio is not applicable
+- electrolyte code and, if shareable, electrolyte details
+- separator, pressure or pressure condition when available, and temperature
+- current density, areal capacity, voltage cutoff, formation protocol, and
+  cycling protocol
+- planned cycle count, termination reason, failure mode, and abnormal notes
+- BTSDA export layer availability: cycle, step, record, and protocol/XML when
+  available
+
+`anode_free_full_cell` should be used when the cell is a true full cell but the
+negative electrode starts without a lithium-metal reservoir. It is not the same
+as Li||Cu half-cell data. Li||Cu remains `lmb_mechanism_test_not_full_cell`
+unless it is part of a documented full-cell assembly.
+
 ## Current Project Assignments
 
 | Data source | Current `dataset_role` | Notes |
@@ -45,6 +97,20 @@ Only `true_lmb` data can support lithium metal battery research conclusions.
 | Future Li-ion pretraining subset, if explicitly designed | `transfer_auxiliary_data` | Only for transfer-learning experiments with true LMB validation |
 | RPT / EIS / thermal runaway / abuse data | `diagnostic_only` | Training use requires protocol alignment and a separate label policy |
 | Any dataset without clear chemistry or cell design | `unknown` | Must not enter training or scientific conclusions |
+
+## Current LMB Lab Scope Assignment
+
+The current partner-provided lab data are LMB-relevant but are not full cells:
+
+| Current data group | `dataset_role` | `cell_scope` | Current scientific use | Forbidden wording |
+| --- | --- | --- | --- | --- |
+| Li||Li symmetric cells: `26-0414`, `26-0421`, `26-0429-009(li-li)` | `true_lmb` candidate after metadata gates | `lmb_mechanism_test_not_full_cell` | polarization, voltage instability, hysteresis, possible soft-short audit | "full-cell lifetime prediction data" |
+| Li||Cu half-cells: `26-0428-009`, `26-0428-085`, `26-0429-002(li-Cu)`, `26-0512(li-Cu)` | `true_lmb` candidate after metadata gates | `lmb_mechanism_test_not_full_cell` | CE, plating/stripping efficiency, incomplete-capacity warning proxy | "full-cell RUL/EOL data" |
+
+For these cells, N/P ratio should be recorded as not applicable. More useful
+fields are Li foil thickness, current density, areal capacity, electrolyte
+volume, separator, pressure, temperature, cycling protocol, and termination
+reason.
 
 ## Allowed And Forbidden Uses
 

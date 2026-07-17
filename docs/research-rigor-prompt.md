@@ -9,15 +9,25 @@ Treat every result as a scientific claim that must be traceable, falsifiable,
 and reproducible. Prefer a slower, auditable pipeline over a fast result whose
 data source, label definition, or validation boundary is unclear.
 
+The corrected target system is lithium metal batteries. Existing lithium-ion
+datasets are allowed as pipeline validation and method-development data, but
+they must not be used to claim lithium metal battery performance.
+
 ## Non-Negotiable Rules
 
 - Record data provenance: source archive, cell ID, protocol family, chemistry,
   preprocessing script, and generated manifest must stay connected.
+- State whether the dataset is lithium metal battery data or only lithium-ion
+  method-development data. Do not blur this distinction in reports.
 - Do not mix task families without an explicit reason. Cycle-life and RPT data
   can support SOH/RUL; thermal runaway data should support safety constraints
   and abuse-risk modeling unless a separate research question is defined.
 - State label definitions before training. Include threshold, initial capacity
   window, sustained crossing rule, censoring handling, and capacity source.
+- For lithium metal batteries, capacity-only EOL is not automatically
+  sufficient. Consider CE stability, overpotential, voltage hysteresis,
+  polarization growth, plating/stripping behavior, and soft-short indicators
+  when the data support them.
 - Mark right-censored batteries honestly. Do not convert unobserved EOL into a
   false observed lifetime.
 - Split validation by cell, batch, protocol, or source dataset when testing
@@ -46,3 +56,5 @@ Before committing a scientific pipeline change, check:
 Never describe a sample run as final model evidence. Sample runs validate code
 paths and schema assumptions. Scientific conclusions require sufficient cells,
 documented protocols, held-out validation, and calibrated uncertainty.
+
+Never describe lithium-ion-only results as lithium metal battery conclusions.

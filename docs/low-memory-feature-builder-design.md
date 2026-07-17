@@ -122,10 +122,51 @@ Current unit test:
 python -m unittest tests.test_build_external_battery_features_low_memory
 ```
 
+## Tiny Real-Slice Validation
+
+A tiny real-slice validation was run on one Round 1c cell only:
+
+| Item | Value |
+| --- | --- |
+| Source cell | `G4C1` |
+| Source root | `D:\battery_archive\processed_cache\by_cell_expansion_round1c` |
+| Tiny input root | `data/processed/external_battery_datasets/by_cell_round1c_tiny_validation` |
+| Feature output root | `data/features/external_battery_datasets_expansion_round1c_tiny_validation` |
+| Label compatibility output root | `data/features/external_battery_datasets_expansion_round1c_tiny_validation_labels` |
+| Cycle rows sampled | 5000 |
+| RPT rows sampled | 5000 |
+| Builder chunksize | 1000 |
+
+Feature output check:
+
+| Output | Result |
+| --- | ---: |
+| `cycle_features.csv` | 1 row, 43 columns |
+| `rpt_features.csv` | 1 row, 41 columns |
+| `protocol_regime_summary.csv` | 1 row, 12 columns |
+| `feature_schema_check.csv` | pass for cycle and RPT |
+| `feature_build_report.json` | completion status `complete` |
+
+Label-builder compatibility check:
+
+| Output | Result |
+| --- | ---: |
+| `external_health_labels.csv` | 6 rows |
+| `external_label_summary.csv` | 6 rows |
+| `label_quality` | all `limited_window_less_than_50_observations` |
+| source tables | 3 cycle labels, 3 RPT labels |
+
+This validation only proves that the low-memory builder can read a real Round
+1c slice, emit the expected schema, and produce feature outputs that the label
+builder can consume. It is not evidence of model performance and does not create
+trainable labels.
+
 ## Handling Round 1c After Validation
 
-After tests pass, the next step is a tiny real-slice validation. Only after that
-should Round 1c be processed.
+Synthetic tests and the G4C1 tiny real-slice validation have passed. The next
+step can be controlled Round 1c feature generation, provided the run is treated
+as feature engineering only and monitored for memory, runtime, and output
+completeness.
 
 Round 1c feature generation should write only small feature outputs under:
 
