@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Battery RUL MVP Dashboard</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #607085;
+      --line: #dbe3ee;
+      --panel: #ffffff;
+      --bg: #f6f8fb;
+      --blue: #2563eb;
+      --teal: #059669;
+      --amber: #d97706;
+      --red: #dc2626;
+      --violet: #6d28d9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar-inner {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand-subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav a {
+      min-height: 34px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #314259;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    main {
+      width: min(1240px, calc(100% - 32px));
+      margin: 24px auto 44px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+      gap: 20px;
+      align-items: stretch;
+      margin-bottom: 20px;
+    }
+
+    .lead {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 24px;
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 32px;
+      line-height: 1.22;
+      margin: 0;
+      max-width: 840px;
+    }
+
+    .summary {
+      color: #405168;
+      font-size: 15px;
+      line-height: 1.75;
+      max-width: 900px;
+      margin: 14px 0 0;
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+      min-height: 88px;
+    }
+
+    .metric-value {
+      font-size: 25px;
+      line-height: 1;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    .stage-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 84px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      border-top: 1px solid #eef2f7;
+      padding-top: 10px;
+    }
+
+    .stage:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .badge {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 6px 10px;
+    }
+
+    .done { background: var(--teal); }
+    .draft { background: var(--amber); }
+    .next { background: var(--violet); }
+
+    .stage-title {
+      font-weight: 800;
+      margin-bottom: 3px;
+    }
+
+    .stage-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .grid-two {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .figure {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .figure-header {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .figure-title {
+      font-size: 16px;
+      font-weight: 850;
+    }
+
+    .figure-tag {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .figure img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: contain;
+      background: #fff;
+      padding: 10px;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .workflow img {
+      aspect-ratio: 2.1 / 1;
+    }
+
+    .tables {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #edf2f7;
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #334155;
+      font-size: 12px;
+      background: #f8fafc;
+    }
+
+    td:last-child, th:last-child {
+      text-align: right;
+    }
+
+    .material-links {
+      display: grid;
+      gap: 10px;
+    }
+
+    .material-links a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 44px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .material-links span {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    footer {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto 28px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 920px) {
+      .hero,
+      .grid-two,
+      .tables {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 12px 0;
+      }
+
+      .nav {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 560px) {
+      main,
+      footer,
+      .topbar-inner {
+        width: min(100% - 20px, 1240px);
+      }
+
+      .status-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .stage {
+        grid-template-columns: 1fr;
+      }
+
+      .nav a {
+        width: calc(50% - 4px);
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-title">Battery Life Prediction MVP</div>
+        <div class="brand-subtitle">初阶通关展示界面 · 数据基础 / 标签质量 / 后续算法</div>
+      </div>
+      <nav class="nav" aria-label="dashboard navigation">
+        <a href="#figures">图表</a>
+        <a href="#audit">审计</a>
+        <a href="#timeline">日志</a>
+        <a href="#materials">材料</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="lead">
+        <div>
+          <div class="eyebrow">Initial Pass-Check MVP</div>
+          <h1>面向电池寿命预测与策略优化的数据基础及 SOH/RUL 标签质量控制</h1>
+          <p class="summary">
+            当前 MVP 聚焦于可复现的数据处理、寿命标签构建、协议边界诊断和标签可训练性审计。
+            界面用于快速展示答辩可讲的阶段性成果，同时明确模型预测和策略优化仍属于下一阶段工作。
+          </p>
+        </div>
+        <div class="status-strip" aria-label="key metrics">
+          <div class="metric">
+            <div class="metric-value">4</div>
+            <div class="metric-label">NASA 锂电池单体已处理</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">25</div>
+            <div class="metric-label">单元测试通过</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">13</div>
+            <div class="metric-label">外部标签当前可训练</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">5</div>
+            <div class="metric-label">PPT-ready 图表已生成</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <h2>当前阶段判断</h2>
+        <div class="stage-list">
+          <div class="stage">
+            <span class="badge done">完成</span>
+            <div>
+              <div class="stage-title">数据与特征基础</div>
+              <div class="stage-note">NASA 数据预处理、SOH/RUL 标签、循环级特征、外部 cycle/RPT 特征已形成。</div>
+            </div>
+          </div>
+          <div class="stage">
+            <span class="badge done">完成</span>
+            <div>
+              <div class="stage-title">标签质量控制</div>
+              <div class="stage-note">协议边界诊断和可训练性审计可作为初阶答辩的主要亮点。</div>
+            </div>
+          </div>
+          <div class="stage">
+            <span class="badge draft">探索</span>
+            <div>
+              <div class="stage-title">预测模型</div>
+              <div class="stage-note">已有 baseline 诊断图，但建议表述为流程验证，不作为最终性能结论。</div>
+            </div>
+          </div>
+          <div class="stage">
+            <span class="badge next">下一步</span>
+            <div>
+              <div class="stage-title">策略优化</div>
+              <div class="stage-note">后续在可靠 RUL/SOH 预测模型和安全约束基础上展开。</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section id="figures" class="grid-two">
+      <article class="panel figure wide workflow">
+        <div class="figure-header">
+          <div class="figure-title">项目整体流程</div>
+          <div class="figure-tag">PPT 第 3 页</div>
+        </div>
+        <img src="../../outputs/demo/figures/05_project_pipeline_overview.png" alt="Project workflow overview" />
+      </article>
+
+      <article class="panel figure">
+        <div class="figure-header">
+          <div class="figure-title">NASA SOH 衰退曲线</div>
+          <div class="figure-tag">寿命阈值与容量衰退</div>
+        </div>
+        <img src="../../outputs/demo/figures/01_nasa_soh_degradation_curves.png" alt="NASA SOH degradation curves" />
+      </article>
+
+      <article class="panel figure">
+        <div class="figure-header">
+          <div class="figure-title">NASA 标签摘要</div>
+          <div class="figure-tag">EOL / 删失样本</div>
+        </div>
+        <img src="../../outputs/demo/figures/02_nasa_label_summary.png" alt="NASA label summary" />
+      </article>
+
+      <article class="panel figure">
+        <div class="figure-header">
+          <div class="figure-title">外部数据协议边界</div>
+          <div class="figure-tag">protocol regime</div>
+        </div>
+        <img src="../../outputs/demo/figures/03_external_protocol_regimes.png" alt="External protocol regimes" />
+      </article>
+
+      <article id="audit" class="panel figure">
+        <div class="figure-header">
+          <div class="figure-title">标签可训练性审计</div>
+          <div class="figure-tag">13 trainable / 167 excluded</div>
+        </div>
+        <img src="../../outputs/demo/figures/04_external_label_audit.png" alt="External label audit" />
+      </article>
+    </section>
+
+    <section id="timeline" class="tables">
+      <article class="panel">
+        <h2>近期开发进展</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>完成内容</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2026-06-05</td>
+              <td>加入外部数据协议边界诊断，输出 protocol regime summary。</td>
+              <td>完成</td>
+            </tr>
+            <tr>
+              <td>2026-06-08</td>
+              <td>添加外部健康标签可训练性保护和审计导出。</td>
+              <td>完成</td>
+            </tr>
+            <tr>
+              <td>2026-06-09</td>
+              <td>生成答辩图表、整理通关报告/PPT 母稿、同步开发日志。</td>
+              <td>完成</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article id="materials" class="panel">
+        <h2>答辩材料入口</h2>
+        <div class="material-links">
+          <a href="../../outputs/demo/pass_check_materials/通关材料整合稿.md">
+            通关材料整合稿
+            <span>报告 / PPT / 讲稿</span>
+          </a>
+          <a href="../../docs/development-roadmap.md">
+            开发日志 MVP
+            <span>进展 / 证据 / 里程碑</span>
+          </a>
+          <a href="../../outputs/diagnostics/nasa_rul_prediction_sample_diagnostic.png">
+            NASA baseline 诊断图
+            <span>可选展示</span>
+          </a>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    本界面为本地静态 MVP dashboard，数据来自当前项目输出文件。答辩表述建议保持谨慎：
+    当前成果是数据与标签基础、协议边界诊断和标签审计，策略优化属于后续阶段。
+  </footer>
+</body>
+</html>
